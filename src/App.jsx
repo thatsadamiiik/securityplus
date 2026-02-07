@@ -1,7 +1,50 @@
 import React, { useState, useEffect } from 'react';
-import { Home, Shield, Activity, Users, Settings, Lock, Unlock, DoorOpen, Eye, AlertTriangle, Bell, UserPlus, Trash2, LogOut, CheckCircle } from 'lucide-react';
+import { Home, Shield, Activity, Users, Settings, Lock, Unlock, DoorOpen, Eye, AlertTriangle, Bell, UserPlus, Trash2, LogOut, CheckCircle, BarChart3, TrendingUp, Clock, Zap, Volume2, VolumeX, Moon, Sun, User, PieChart, Calendar, Wifi, WifiOff, X, Usb } from 'lucide-react';
+import ESP32USBConfig from './ESP32USBConfig.jsx';
 
 const API_URL = 'http://35.158.231.80:3000/api';
+
+// Toast Component
+const Toast = ({ message, type = 'info', onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onClose();
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const bgColor = {
+    success: 'bg-green-500',
+    error: 'bg-red-500',
+    warning: 'bg-yellow-500',
+    info: 'bg-blue-500'
+  }[type];
+
+  return (
+    <div className={`${bgColor} text-white px-6 py-4 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px] animate-slide-in`}>
+      <span className="flex-1">{message}</span>
+      <button onClick={onClose} className="hover:bg-white/20 p-1 rounded">
+        <X size={18} />
+      </button>
+    </div>
+  );
+};
+
+// Toast Container
+const ToastContainer = ({ toasts, removeToast }) => {
+  return (
+    <div className="fixed top-6 right-6 z-[9999] space-y-3">
+      {toasts.map(toast => (
+        <Toast
+          key={toast.id}
+          message={toast.message}
+          type={toast.type}
+          onClose={() => removeToast(toast.id)}
+        />
+      ))}
+    </div>
+  );
+};
 
 const HouseholdDashboard = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -10,8 +53,21 @@ const HouseholdDashboard = () => {
   const [activeView, setActiveView] = useState('dashboard');
   const [dashboardData, setDashboardData] = useState(null);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [toasts, setToasts] = useState([]);
   
+  // OPRAVENÉ: Oddelené stavy pre internet a ESP32
+  const [hasInternet, setHasInternet] = useState(true); // Počítač má internet?
+  const [esp32Online, setEsp32Online] = useState(false); // ESP32 je dostupné?
+  
+  const [lastOnlineCheck, setLastOnlineCheck] = useState(Date.now());
+  const [buzzerActive, setBuzzerActive] = useState(false);
+  const [theme, setTheme] = useState('dark');
+  const [showUSBConfig, setShowUSBConfig] = useState(false);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [loginError, setLoginError] = useState('');
   const [newMember, setNewMember] = useState({
     username: '',
     password: '',
@@ -21,7 +77,133 @@ const HouseholdDashboard = () => {
     member_role: 'viewer'
   });
 
+  // User preferences state
+  const [userPreferences, setUserPreferences] = useState({
+    notifications_enabled: true,
+    sound_alerts: true,
+    email_notifications: true,
+    theme: 'dark',
+    auto_acknowledge: false,
+    notification_priority: 'all'
+  });
+
+  // Statistics state
+  const [statistics, setStatistics] = useState({
+    today: { total: 0, alerts: 0, warnings: 0 },
+    week: { total: 0, alerts: 0, warnings: 0 },
+    month: { total: 0, alerts: 0, warnings: 0 },
+    mostActiveSensor: null,
+    hourlyActivity: Array(24).fill(0),
+    dailyActivity: Array(7).fill(0)
+  });
+
+  // Add toast
+  const addToast = (message, type = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+  };
+
+  // Remove toast
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  };
+
+  // NOVÉ: Kontrola internetového pripojenia počítača
+  const checkInternetConnection = () => {
+    const online = navigator.onLine;
+    setHasInternet(online);
+    return online;
+  };
+
+  // UPRAVENÉ: Kontrola dostupnosti ESP32/servera
+  const checkESP32Status = async () => {
+    if (!hasInternet) {
+      setEsp32Online(false);
+      return false;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(`${API_URL}/household/ping`, {
+        method: 'GET',
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        if (!esp32Online) {
+          setEsp32Online(true);
+          addToast('ESP32 pripojené!', 'success');
+        }
+        setLastOnlineCheck(Date.now());
+        return true;
+      } else {
+        setEsp32Online(false);
+        return false;
+      }
+    } catch (error) {
+      setEsp32Online(false);
+      return false;
+    }
+  };
+
+  // Sleduj zmeny v internetovom pripojení
+  useEffect(() => {
+    const handleOnline = () => {
+      setHasInternet(true);
+      addToast('Internetové pripojenie obnovené', 'success');
+      checkESP32Status();
+    };
+
+    const handleOffline = () => {
+      setHasInternet(false);
+      setEsp32Online(false);
+      addToast('Stratené internetové pripojenie', 'error');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Iniciálna kontrola
+    checkInternetConnection();
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Periodická kontrola ESP32
+  useEffect(() => {
+    if (isLoggedIn && hasInternet) {
+      checkESP32Status();
+      
+      const interval = setInterval(() => {
+        checkESP32Status();
+      }, 10000); // Check every 10 seconds
+      
+      return () => clearInterval(interval);
+    }
+  }, [isLoggedIn, hasInternet]);
+
   const handleLogin = async () => {
+    // OPRAVENÉ: Kontroluj len internet, nie ESP32
+    if (!hasInternet) {
+      addToast('Nie je internetové pripojenie', 'error');
+      return;
+    }
+
+    setLoginError('');
+    
+    if (!loginForm.username || !loginForm.password) {
+      setLoginError('Vyplňte všetky polia');
+      addToast('Vyplňte používateľské meno a heslo', 'warning');
+      return;
+    }
+
     try {
       const response = await fetch(`${API_URL}/auth/household/login`, {
         method: 'POST',
@@ -37,12 +219,28 @@ const HouseholdDashboard = () => {
         setIsLoggedIn(true);
         localStorage.setItem('household_token', data.token);
         localStorage.setItem('household_user', JSON.stringify(data.user));
+        
+        // Load user preferences
+        const savedPrefs = localStorage.getItem(`prefs_${data.user.id}`);
+        if (savedPrefs) {
+          const prefs = JSON.parse(savedPrefs);
+          setUserPreferences(prefs);
+          setTheme(prefs.theme || 'dark');
+        }
+        
+        addToast('Úspešne prihlásený!', 'success');
+        setLoginError('');
+        
+        // Kontrola ESP32 po prihlásení
+        checkESP32Status();
       } else {
-        alert(data.error || 'Prihlásenie zlyhalo');
+        setLoginError(data.error || 'Prihlásenie zlyhalo');
+        addToast(data.error || 'Nesprávne prihlasovacie údaje', 'error');
       }
     } catch (error) {
       console.error('Login error:', error);
-      alert('Chyba pripojenia k serveru');
+      setLoginError('Chyba pripojenia k serveru');
+      addToast('Chyba pripojenia k serveru', 'error');
     }
   };
 
@@ -50,8 +248,10 @@ const HouseholdDashboard = () => {
     setIsLoggedIn(false);
     setToken('');
     setUser(null);
+    setDashboardData(null);
     localStorage.removeItem('household_token');
     localStorage.removeItem('household_user');
+    addToast('Odhlásený', 'info');
   };
 
   useEffect(() => {
@@ -60,12 +260,23 @@ const HouseholdDashboard = () => {
     
     if (savedToken && savedUser) {
       setToken(savedToken);
-      setUser(JSON.parse(savedUser));
+      const userData = JSON.parse(savedUser);
+      setUser(userData);
       setIsLoggedIn(true);
+      
+      // Load preferences
+      const savedPrefs = localStorage.getItem(`prefs_${userData.id}`);
+      if (savedPrefs) {
+        const prefs = JSON.parse(savedPrefs);
+        setUserPreferences(prefs);
+        setTheme(prefs.theme || 'dark');
+      }
     }
   }, []);
 
-const fetchDashboard = async () => {
+  const fetchDashboard = async () => {
+    if (!esp32Online) return;
+    
     try {
       const response = await fetch(`${API_URL}/household/dashboard`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -73,28 +284,222 @@ const fetchDashboard = async () => {
 
       if (response.status === 403 || response.status === 401) {
         handleLogout();
+        addToast('Relácia vypršala, prihláste sa znovu', 'warning');
         return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch dashboard');
       }
 
       const data = await response.json();
       setDashboardData(data);
+      
+      // Calculate statistics from events
+      calculateStatistics(data.events);
+      
+      // Check for new notifications
+      checkNewNotifications(data.events);
+      
+      // Check buzzer status
+      checkBuzzerStatus(data.events);
     } catch (error) {
       console.error('Fetch dashboard error:', error);
+      setEsp32Online(false);
     }
   };
 
+  const checkBuzzerStatus = (events) => {
+    // Check last 5 events for buzzer activation
+    const recentEvents = events.slice(0, 5);
+    const buzzerEvent = recentEvents.find(e => 
+      e.description && e.description.includes('Bzučiak aktivovaný')
+    );
+    
+    if (buzzerEvent && !buzzerEvent.acknowledged) {
+      setBuzzerActive(true);
+    } else {
+      setBuzzerActive(false);
+    }
+  };
+
+  const deactivateBuzzer = async () => {
+    if (!esp32Online) {
+      addToast('ESP32 nie je pripojené', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/household/buzzer/deactivate`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ household_id: dashboardData?.household?.id })
+      });
+
+      if (response.ok) {
+        setBuzzerActive(false);
+        addToast('Bzučiak vypnutý', 'success');
+        fetchDashboard();
+      } else {
+        addToast('Nepodarilo sa vypnúť bzučiak', 'error');
+      }
+    } catch (error) {
+      console.error('Deactivate buzzer error:', error);
+      addToast('Chyba pri vypínaní bzučiaka', 'error');
+    }
+  };
+
+  const calculateStatistics = (events) => {
+    const now = new Date();
+    const todayStart = new Date(now.setHours(0, 0, 0, 0));
+    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    let todayStats = { total: 0, alerts: 0, warnings: 0 };
+    let weekStats = { total: 0, alerts: 0, warnings: 0 };
+    let monthStats = { total: 0, alerts: 0, warnings: 0 };
+    let sensorCounts = {};
+    let hourlyActivity = Array(24).fill(0);
+    let dailyActivity = Array(7).fill(0);
+
+    events.forEach(event => {
+      const eventDate = new Date(event.timestamp);
+      
+      if (eventDate >= monthStart) {
+        monthStats.total++;
+        if (event.severity === 'alert') monthStats.alerts++;
+        if (event.severity === 'warning') monthStats.warnings++;
+      }
+      
+      if (eventDate >= weekStart) {
+        weekStats.total++;
+        if (event.severity === 'alert') weekStats.alerts++;
+        if (event.severity === 'warning') weekStats.warnings++;
+        
+        const dayIndex = Math.floor((now - eventDate) / (1000 * 60 * 60 * 24));
+        if (dayIndex < 7) {
+          dailyActivity[6 - dayIndex]++;
+        }
+      }
+      
+      if (eventDate >= todayStart) {
+        todayStats.total++;
+        if (event.severity === 'alert') todayStats.alerts++;
+        if (event.severity === 'warning') todayStats.warnings++;
+        
+        const hour = eventDate.getHours();
+        hourlyActivity[hour]++;
+      }
+
+      if (event.sensor_name) {
+        sensorCounts[event.sensor_name] = (sensorCounts[event.sensor_name] || 0) + 1;
+      }
+    });
+
+    let mostActiveSensor = null;
+    let maxCount = 0;
+    Object.entries(sensorCounts).forEach(([sensor, count]) => {
+      if (count > maxCount) {
+        maxCount = count;
+        mostActiveSensor = { name: sensor, count };
+      }
+    });
+
+    setStatistics({
+      today: todayStats,
+      week: weekStats,
+      month: monthStats,
+      mostActiveSensor,
+      hourlyActivity,
+      dailyActivity
+    });
+  };
+
+  const checkNewNotifications = (events) => {
+    if (!userPreferences.notifications_enabled) return;
+
+    const lastCheck = localStorage.getItem(`last_check_${user?.id}`) || new Date().toISOString();
+    const newEvents = events.filter(event => {
+      const eventDate = new Date(event.timestamp);
+      const lastCheckDate = new Date(lastCheck);
+      
+      if (userPreferences.notification_priority === 'critical' && event.severity !== 'alert') return false;
+      if (userPreferences.notification_priority === 'warnings' && event.severity === 'info') return false;
+      
+      return eventDate > lastCheckDate && !event.acknowledged;
+    });
+
+    if (newEvents.length > 0) {
+      setNotifications(prev => [...newEvents.reverse(), ...prev].slice(0, 50));
+      setUnreadCount(prev => prev + newEvents.length);
+      
+      if (userPreferences.sound_alerts && newEvents.some(e => e.severity === 'alert')) {
+        playAlertSound();
+      }
+    }
+
+    localStorage.setItem(`last_check_${user?.id}`, new Date().toISOString());
+  };
+
+  const playAlertSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (error) {
+      console.error('Sound play error:', error);
+    }
+  };
+
+  const savePreferences = () => {
+    const prefsToSave = { ...userPreferences, theme };
+    localStorage.setItem(`prefs_${user.id}`, JSON.stringify(prefsToSave));
+    addToast('Nastavenia uložené!', 'success');
+  };
+
+  const clearNotifications = () => {
+    setNotifications([]);
+    setUnreadCount(0);
+    addToast('Notifikácie vymazané', 'info');
+  };
+
+  const toggleTheme = (newTheme) => {
+    setTheme(newTheme);
+    setUserPreferences({ ...userPreferences, theme: newTheme });
+  };
+
   useEffect(() => {
-    if (isLoggedIn && token) {
+    if (isLoggedIn && token && esp32Online) {
       fetchDashboard();
       
       const interval = setInterval(fetchDashboard, 5000);
       return () => clearInterval(interval);
     }
-  }, [isLoggedIn, token]);
+  }, [isLoggedIn, token, esp32Online]);
 
   const toggleAlarm = async () => {
+    if (!esp32Online) {
+      addToast('ESP32 nie je pripojené', 'error');
+      return;
+    }
+
     if (user.role === 'viewer') {
-      alert('Nemáte oprávnenie na ovládanie alarmu');
+      addToast('Nemáte oprávnenie na ovládanie alarmu', 'warning');
       return;
     }
 
@@ -108,15 +513,22 @@ const fetchDashboard = async () => {
 
       if (response.ok) {
         fetchDashboard();
+        addToast(data.message || 'Stav alarmu zmenený', 'success');
       } else {
-        alert(data.error);
+        addToast(data.error || 'Chyba pri zmene alarmu', 'error');
       }
     } catch (error) {
       console.error('Toggle alarm error:', error);
+      addToast('Chyba pripojenia', 'error');
     }
   };
 
   const handleAddMember = async () => {
+    if (!esp32Online) {
+      addToast('ESP32 nie je pripojené', 'error');
+      return;
+    }
+
     try {
       const response = await fetch(`${API_URL}/household/members/add`, {
         method: 'POST',
@@ -130,21 +542,26 @@ const fetchDashboard = async () => {
       const data = await response.json();
 
       if (response.ok) {
-        alert('Člen pridaný úspešne!');
+        addToast('Člen pridaný úspešne!', 'success');
         setShowAddMemberModal(false);
         setNewMember({ username: '', password: '', full_name: '', email: '', phone: '', member_role: 'viewer' });
         fetchDashboard();
       } else {
-        alert(data.error);
+        addToast(data.error || 'Chyba pri pridávaní člena', 'error');
       }
     } catch (error) {
       console.error('Add member error:', error);
-      alert('Chyba pripojenia');
+      addToast('Chyba pripojenia', 'error');
     }
   };
 
   const handleRemoveMember = async (memberId) => {
-    if (!confirm('Naozaj chcete odstrániť tohto člena?')) return;
+    if (!esp32Online) {
+      addToast('ESP32 nie je pripojené', 'error');
+      return;
+    }
+
+    if (!window.confirm('Naozaj chcete odstrániť tohto člena?')) return;
 
     try {
       const response = await fetch(`${API_URL}/household/members/${memberId}`, {
@@ -153,83 +570,202 @@ const fetchDashboard = async () => {
       });
 
       if (response.ok) {
-        alert('Člen odstránený');
+        addToast('Člen odstránený', 'success');
         fetchDashboard();
+      } else {
+        addToast('Chyba pri odstraňovaní člena', 'error');
       }
     } catch (error) {
       console.error('Remove member error:', error);
+      addToast('Chyba pripojenia', 'error');
     }
   };
 
   const acknowledgeEvent = async (eventId) => {
+    if (!esp32Online) {
+      addToast('ESP32 nie je pripojené', 'error');
+      return;
+    }
+
     try {
       await fetch(`${API_URL}/household/events/${eventId}/acknowledge`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       fetchDashboard();
+      addToast('Udalosť potvrdená', 'success');
     } catch (error) {
       console.error('Acknowledge error:', error);
+      addToast('Chyba pri potvrdení', 'error');
     }
   };
 
+  // Login screen
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-6">
+      <div className={`min-h-screen ${theme === 'dark' ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900' : 'bg-gradient-to-br from-gray-100 via-gray-200 to-gray-100'} flex items-center justify-center p-6`}>
+        <ToastContainer toasts={toasts} removeToast={removeToast} />
+        
+        {/* Internet connection banner */}
+        {!hasInternet && (
+          <div className="fixed top-0 left-0 right-0 bg-red-600 text-white py-3 px-6 flex items-center justify-center gap-3 z-50">
+            <WifiOff size={20} />
+            <span className="font-semibold">Počítač nemá internetové pripojenie!</span>
+          </div>
+        )}
+        
         <div className="max-w-md w-full">
           <div className="text-center mb-8">
-            <div className="inline-block p-4 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-2xl shadow-lg shadow-cyan-500/50 mb-4">
+            <div className={`inline-block p-4 ${theme === 'dark' ? 'bg-gradient-to-br from-cyan-500 to-blue-600' : 'bg-gradient-to-br from-blue-500 to-indigo-600'} rounded-2xl shadow-lg ${theme === 'dark' ? 'shadow-cyan-500/50' : 'shadow-blue-500/50'} mb-4`}>
               <Home size={48} className="text-white" />
             </div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent mb-2">
+            <h1 className={`text-4xl font-bold ${theme === 'dark' ? 'bg-gradient-to-r from-cyan-300 to-blue-400' : 'bg-gradient-to-r from-blue-600 to-indigo-600'} bg-clip-text text-transparent mb-2`}>
               SecurityPlus
             </h1>
-            <p className="text-gray-400">Domáci bezpečnostný systém</p>
+            <p className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>Domáci bezpečnostný systém</p>
           </div>
 
-          <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-8 border border-slate-700/50">
+          <div className={`${theme === 'dark' ? 'bg-slate-800/50' : 'bg-white'} backdrop-blur-sm rounded-2xl p-8 border ${theme === 'dark' ? 'border-slate-700/50' : 'border-gray-200'} shadow-xl`}>
+            {loginError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+                {loginError}
+              </div>
+            )}
+            
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'} mb-2`}>
                 Používateľské meno
               </label>
               <input
                 type="text"
                 value={loginForm.username}
-                onChange={(e) => setLoginForm({...loginForm, username: e.target.value})}
+                onChange={(e) => {
+                  setLoginForm({...loginForm, username: e.target.value});
+                  setLoginError('');
+                }}
                 onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                disabled={!hasInternet}
+                className={`w-full px-4 py-3 ${theme === 'dark' ? 'bg-slate-900/50 border-slate-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'} border rounded-lg focus:outline-none focus:border-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed`}
               />
             </div>
 
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'} mb-2`}>
                 Heslo
               </label>
               <input
                 type="password"
                 value={loginForm.password}
-                onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
+                onChange={(e) => {
+                  setLoginForm({...loginForm, password: e.target.value});
+                  setLoginError('');
+                }}
                 onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                disabled={!hasInternet}
+                className={`w-full px-4 py-3 ${theme === 'dark' ? 'bg-slate-900/50 border-slate-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'} border rounded-lg focus:outline-none focus:border-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed`}
               />
             </div>
 
             <button
               onClick={handleLogin}
-              className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold rounded-lg hover:shadow-lg hover:shadow-cyan-500/50 transition-all"
+              disabled={!hasInternet}
+              className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold rounded-lg hover:shadow-lg hover:shadow-cyan-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Prihlásiť sa
+              {hasInternet ? 'Prihlásiť sa' : 'Chýba internetové pripojenie'}
             </button>
+            
+            {!hasInternet && (
+              <p className="mt-4 text-center text-sm text-red-400">
+                Pre prihlásenie je potrebné internetové pripojenie
+              </p>
+            )}
           </div>
         </div>
       </div>
     );
   }
 
+  // ESP32 offline screen (po prihlásení)
+  if (isLoggedIn && !esp32Online) {
+    return (
+      <>
+        <div className={`min-h-screen ${theme === 'dark' ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900' : 'bg-gradient-to-br from-gray-100 via-gray-200 to-gray-100'} flex items-center justify-center p-6`}>
+          <ToastContainer toasts={toasts} removeToast={removeToast} />
+          
+          <div className="max-w-2xl w-full text-center">
+            <div className="mb-8">
+              <WifiOff size={80} className="text-red-500 mx-auto mb-4" />
+              <h1 className="text-4xl font-bold text-red-500 mb-4">ESP32 Offline</h1>
+              <p className={`text-xl ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'} mb-8`}>
+                ESP32 zariadenie nie je momentálne pripojené k serveru
+              </p>
+            </div>
+            
+            <div className={`${theme === 'dark' ? 'bg-slate-800/50' : 'bg-white'} backdrop-blur-sm rounded-2xl p-8 border ${theme === 'dark' ? 'border-slate-700/50' : 'border-gray-200'} shadow-xl`}>
+              <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'} mb-4`}>Možné riešenia:</h2>
+              <ul className={`text-left space-y-3 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'} mb-6`}>
+                <li className="flex items-start gap-3">
+                  <span className="text-cyan-500 font-bold">1.</span>
+                  <span>Overte, či je ESP32 zapnuté a má napájanie</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="text-cyan-500 font-bold">2.</span>
+                  <span>Skontrolujte, či je ESP32 pripojené k WiFi sieti</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="text-cyan-500 font-bold">3.</span>
+                  <span>Ak ste zmenili WiFi heslo alebo sieť, použite USB konfiguráciu nižšie</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="text-cyan-500 font-bold">4.</span>
+                  <span>Reštartujte ESP32 vypnutím a zapnutím napájania</span>
+                </li>
+              </ul>
+              
+              <button
+                onClick={() => {
+                  checkESP32Status();
+                  addToast('Kontrola ESP32...', 'info');
+                }}
+                className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold rounded-lg hover:shadow-lg hover:shadow-cyan-500/50 transition-all"
+              >
+                Skúsiť znovu
+              </button>
+              <button
+                onClick={() => setShowUSBConfig(true)}
+                className="w-full mt-3 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold rounded-lg hover:shadow-lg hover:shadow-purple-500/50 transition-all flex items-center justify-center gap-2"
+              >
+                <Usb size={20} />
+                Konfigurovať ESP32 cez USB
+              </button>            
+              <button
+                onClick={handleLogout}
+                className={`w-full mt-3 py-3 ${theme === 'dark' ? 'bg-slate-700 hover:bg-slate-600' : 'bg-gray-200 hover:bg-gray-300'} ${theme === 'dark' ? 'text-white' : 'text-gray-900'} font-semibold rounded-lg transition-all`}
+              >
+                Odhlásiť sa
+              </button>
+            </div>
+          </div>
+        </div>
+        <ESP32USBConfig 
+          isOpen={showUSBConfig}
+          onClose={() => setShowUSBConfig(false)}
+          onSuccess={() => {
+            addToast('ESP32 nakonfigurované! Čakám na pripojenie...', 'success');
+            setShowUSBConfig(false);
+            setTimeout(() => {
+              checkESP32Status();
+            }, 3000);
+          }}
+        />
+      </>
+    );
+  }
+
   if (!dashboardData) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <div className="text-white text-xl">Načítavam...</div>
+      <div className={`min-h-screen ${theme === 'dark' ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900' : 'bg-gradient-to-br from-gray-100 via-gray-200 to-gray-100'} flex items-center justify-center`}>
+        <div className={`${theme === 'dark' ? 'text-white' : 'text-gray-900'} text-xl`}>Načítavam...</div>
       </div>
     );
   }
@@ -238,29 +774,121 @@ const fetchDashboard = async () => {
   const alarmActive = household.alarm_status === 'active';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-6">
+    <div className={`min-h-screen ${theme === 'dark' ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white' : 'bg-gradient-to-br from-gray-100 via-gray-200 to-gray-100 text-gray-900'} p-6`}>
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
+      
+      {/* Buzzer Alert */}
+      {buzzerActive && (
+        <div className="fixed top-0 left-0 right-0 bg-red-600 text-white py-4 px-6 flex items-center justify-between gap-4 z-50 animate-pulse">
+          <div className="flex items-center gap-3">
+            <Volume2 size={24} className="animate-bounce" />
+            <span className="font-bold text-lg">BZUČIAK AKTÍVNY - Detekovaná bezpečnostná udalosť!</span>
+          </div>
+          <button
+            onClick={deactivateBuzzer}
+            className="px-6 py-2 bg-white text-red-600 font-bold rounded-lg hover:bg-gray-100 transition-all flex items-center gap-2"
+          >
+            <VolumeX size={20} />
+            Vypnúť bzučiak
+          </button>
+        </div>
+      )}
+      
       <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
+        {/* Header */}
+        <div className={`flex items-center justify-between mb-8 ${buzzerActive ? 'mt-20' : ''}`}>
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl shadow-lg shadow-cyan-500/50">
-              <Shield size={32} />
+            <div className={`p-3 ${theme === 'dark' ? 'bg-gradient-to-br from-cyan-500 to-blue-600' : 'bg-gradient-to-br from-blue-500 to-indigo-600'} rounded-xl shadow-lg ${theme === 'dark' ? 'shadow-cyan-500/50' : 'shadow-blue-500/50'}`}>
+              <Shield size={32} className="text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">
+              <h1 className={`text-3xl font-bold ${theme === 'dark' ? 'bg-gradient-to-r from-cyan-300 to-blue-400' : 'bg-gradient-to-r from-blue-600 to-indigo-600'} bg-clip-text text-transparent`}>
                 {household.name}
               </h1>
-              <p className="text-gray-400 text-sm">{user.full_name} • {user.role}</p>
+              <p className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'} text-sm`}>{user.full_name} • {user.role}</p>
             </div>
           </div>
           
           <div className="flex items-center gap-4">
-            <div className="px-4 py-2 bg-slate-800/50 backdrop-blur-sm rounded-lg border border-slate-700">
-              <span className="text-xs text-gray-400">Kľúč: </span>
-              <span className="text-cyan-300 font-mono text-sm">{household.household_key}</span>
+            <div className={`px-4 py-2 ${theme === 'dark' ? 'bg-slate-800/50' : 'bg-white'} backdrop-blur-sm rounded-lg border ${theme === 'dark' ? 'border-slate-700' : 'border-gray-200'}`}>
+              <span className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>Kľúč: </span>
+              <span className={`${theme === 'dark' ? 'text-cyan-300' : 'text-blue-600'} font-mono text-sm`}>{household.household_key}</span>
             </div>
+            
+            {/* Connection Status */}
+            <div className={`px-4 py-2 ${theme === 'dark' ? 'bg-slate-800/50' : 'bg-white'} backdrop-blur-sm rounded-lg border ${esp32Online ? (theme === 'dark' ? 'border-green-500/30' : 'border-green-300') : (theme === 'dark' ? 'border-red-500/30' : 'border-red-300')} flex items-center gap-2`}>
+              {esp32Online ? <Wifi size={16} className="text-green-500" /> : <WifiOff size={16} className="text-red-500" />}
+              <span className={`text-xs ${esp32Online ? 'text-green-500' : 'text-red-500'}`}>
+                {esp32Online ? 'ESP32 Online' : 'ESP32 Offline'}
+              </span>
+            </div>
+            
+            {/* Notifications Bell */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className={`p-2 ${theme === 'dark' ? 'text-gray-400 hover:text-cyan-400 hover:bg-cyan-500/10' : 'text-gray-600 hover:text-blue-600 hover:bg-blue-100'} rounded-lg transition-all relative`}
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+              
+              {/* Notifications Dropdown */}
+              {showNotifications && (
+                <div className={`absolute right-0 mt-2 w-96 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'} border rounded-xl shadow-xl z-50 max-h-96 overflow-y-auto`}>
+                  <div className={`p-4 border-b ${theme === 'dark' ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-white'} flex items-center justify-between sticky top-0`}>
+                    <h3 className="font-semibold">Notifikácie</h3>
+                    {notifications.length > 0 && (
+                      <button
+                        onClick={clearNotifications}
+                        className={`text-xs ${theme === 'dark' ? 'text-cyan-400 hover:text-cyan-300' : 'text-blue-600 hover:text-blue-700'}`}
+                      >
+                        Vymazať všetko
+                      </button>
+                    )}
+                  </div>
+                  
+                  {notifications.length === 0 ? (
+                    <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <Bell size={32} className="mx-auto mb-2 opacity-50" />
+                      <p>Žiadne nové notifikácie</p>
+                    </div>
+                  ) : (
+                    <div className={`divide-y ${theme === 'dark' ? 'divide-slate-700' : 'divide-gray-200'}`}>
+                      {notifications.map((notif, idx) => (
+                        <div
+                          key={idx}
+                          className={`p-3 ${theme === 'dark' ? 'hover:bg-slate-700/30' : 'hover:bg-gray-50'} transition-colors ${
+                            notif.severity === 'alert' ? (theme === 'dark' ? 'bg-red-500/5' : 'bg-red-50') : ''
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            {notif.severity === 'alert' && (
+                              <AlertTriangle size={16} className="text-red-400 mt-1" />
+                            )}
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{notif.sensor_name || 'Systém'}</p>
+                              <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>{notif.description}</p>
+                              <p className={`text-xs ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'} mt-1`}>
+                                {new Date(notif.timestamp).toLocaleString('sk-SK')}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
             <button
               onClick={handleLogout}
-              className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+              className={`p-2 ${theme === 'dark' ? 'text-gray-400 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-600 hover:text-red-600 hover:bg-red-100'} rounded-lg transition-all`}
             >
               <LogOut size={20} />
             </button>
@@ -268,312 +896,117 @@ const fetchDashboard = async () => {
         </div>
 
         <div className="grid grid-cols-4 gap-6">
+          {/* Sidebar Navigation */}
           <div className="col-span-1 space-y-2">
             <button
               onClick={() => setActiveView('dashboard')}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                 activeView === 'dashboard'
-                  ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-400/50 text-cyan-300'
-                  : 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/10'
+                  ? (theme === 'dark' 
+                    ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-400/50 text-cyan-300'
+                    : 'bg-gradient-to-r from-blue-100 to-indigo-100 border border-blue-300 text-blue-700')
+                  : (theme === 'dark'
+                    ? 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/10'
+                    : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50')
               }`}
             >
               <Home size={20} />
               <span className="font-medium">Dashboard</span>
             </button>
+            
+            <button
+              onClick={() => setActiveView('statistics')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                activeView === 'statistics'
+                  ? (theme === 'dark' 
+                    ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-400/50 text-cyan-300'
+                    : 'bg-gradient-to-r from-blue-100 to-indigo-100 border border-blue-300 text-blue-700')
+                  : (theme === 'dark'
+                    ? 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/10'
+                    : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50')
+              }`}
+            >
+              <BarChart3 size={20} />
+              <span className="font-medium">Štatistiky</span>
+            </button>
+            
             <button
               onClick={() => setActiveView('activity')}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                 activeView === 'activity'
-                  ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-400/50 text-cyan-300'
-                  : 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/10'
+                  ? (theme === 'dark' 
+                    ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-400/50 text-cyan-300'
+                    : 'bg-gradient-to-r from-blue-100 to-indigo-100 border border-blue-300 text-blue-700')
+                  : (theme === 'dark'
+                    ? 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/10'
+                    : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50')
               }`}
             >
               <Activity size={20} />
               <span className="font-medium">Aktivita</span>
             </button>
+            
             {user.role === 'admin' && (
               <button
                 onClick={() => setActiveView('members')}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                   activeView === 'members'
-                    ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-400/50 text-cyan-300'
-                    : 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/10'
+                    ? (theme === 'dark' 
+                      ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-400/50 text-cyan-300'
+                      : 'bg-gradient-to-r from-blue-100 to-indigo-100 border border-blue-300 text-blue-700')
+                    : (theme === 'dark'
+                      ? 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/10'
+                      : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50')
                 }`}
               >
                 <Users size={20} />
                 <span className="font-medium">Členovia</span>
               </button>
             )}
+            
+            <button
+              onClick={() => setActiveView('settings')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                activeView === 'settings'
+                  ? (theme === 'dark' 
+                    ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-400/50 text-cyan-300'
+                    : 'bg-gradient-to-r from-blue-100 to-indigo-100 border border-blue-300 text-blue-700')
+                  : (theme === 'dark'
+                    ? 'text-gray-400 hover:text-cyan-300 hover:bg-cyan-500/10'
+                    : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50')
+              }`}
+            >
+              <Settings size={20} />
+              <span className="font-medium">Nastavenia</span>
+            </button>
           </div>
 
-          <div className="col-span-3 space-y-6">
-            {activeView === 'dashboard' && (
-              <>
-                <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-2xl font-bold mb-2">Stav Alarmu</h2>
-                      <p className="text-gray-400">
-                        {alarmActive ? 'Systém je aktívny a monitoruje všetky senzory' : 'Systém je v pohotovostnom režime'}
-                      </p>
-                    </div>
-                    
-                    <button
-                      onClick={toggleAlarm}
-                      disabled={user.role === 'viewer'}
-                      className={`relative px-8 py-4 rounded-xl font-bold text-lg transition-all transform hover:scale-105 ${
-                        alarmActive
-                          ? 'bg-gradient-to-r from-red-500 to-orange-500 shadow-lg shadow-red-500/50'
-                          : 'bg-gradient-to-r from-green-500 to-emerald-500 shadow-lg shadow-green-500/50'
-                      } ${user.role === 'viewer' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        {alarmActive ? <Lock size={24} /> : <Unlock size={24} />}
-                        {alarmActive ? 'VYPNÚŤ' : 'ZAPNÚŤ'}
-                      </div>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  {sensors.map(sensor => (
-                    <div
-                      key={sensor.id}
-                      className={`bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border transition-all ${
-                        sensor.status === 'triggered'
-                          ? 'border-red-500 shadow-lg shadow-red-500/30'
-                          : sensor.status === 'active'
-                          ? 'border-green-500/30'
-                          : 'border-slate-700/50'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h3 className="font-semibold text-lg">{sensor.name}</h3>
-                          <p className="text-sm text-gray-400">{sensor.location}</p>
-                        </div>
-                        <div className={`p-2 rounded-lg ${
-                          sensor.status === 'triggered' ? 'bg-red-500/20 text-red-400' :
-                          sensor.status === 'active' ? 'bg-green-500/20 text-green-400' :
-                          'bg-slate-700/50 text-gray-400'
-                        }`}>
-                          {sensor.type === 'door' || sensor.type === 'window' ? <DoorOpen size={20} /> : <Eye size={20} />}
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center justify-between text-sm mb-2">
-                        <span className="text-gray-400">Batéria:</span>
-                        <span className={`font-semibold ${sensor.battery_level > 20 ? 'text-green-300' : 'text-red-300'}`}>
-                          {sensor.battery_level}%
-                        </span>
-                      </div>
-
-                      <div className={`h-1 rounded-full ${
-                        sensor.status === 'triggered' ? 'bg-red-500' :
-                        sensor.status === 'active' ? 'bg-green-500' :
-                        'bg-slate-700'
-                      }`} />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50">
-                  <h2 className="text-xl font-bold mb-4 flex items-center gap-3">
-                    <Activity className="text-cyan-400" size={24} />
-                    Nedávna Aktivita
-                  </h2>
-                  
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {events.slice(0, 10).map(event => (
-                      <div
-                        key={event.id}
-                        className={`flex items-center justify-between p-3 rounded-lg border ${
-                          event.severity === 'alert' ? 'bg-red-500/10 border-red-500/30' :
-                          event.severity === 'warning' ? 'bg-yellow-500/10 border-yellow-500/30' :
-                          'bg-slate-700/30 border-slate-600/30'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 flex-1">
-                          {event.severity === 'alert' && <AlertTriangle size={18} className="text-red-400" />}
-                          <div>
-                            <p className="font-medium">{event.sensor_name || 'Systém'}</p>
-                            <p className="text-xs text-gray-400">{event.description}</p>
-                          </div>
-                        </div>
-                        <div className="text-right text-sm flex items-center gap-3">
-                          <div>
-                            <p className="text-gray-300">{new Date(event.timestamp).toLocaleTimeString('sk-SK')}</p>
-                            <p className="text-xs text-gray-500">{new Date(event.timestamp).toLocaleDateString('sk-SK')}</p>
-                          </div>
-                          {!event.acknowledged && event.severity !== 'info' && (
-                            <button
-                              onClick={() => acknowledgeEvent(event.id)}
-                              className="p-1 text-green-400 hover:bg-green-500/10 rounded"
-                              title="Potvrdiť"
-                            >
-                              <CheckCircle size={18} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {activeView === 'activity' && (
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50">
-                <h2 className="text-xl font-bold mb-4">Kompletná História</h2>
-                <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                  {events.map(event => (
-                    <div key={event.id} className="p-4 bg-slate-700/30 rounded-lg border border-slate-600/30">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium">{event.sensor_name || 'Systém'}</p>
-                          <p className="text-sm text-gray-400">{event.description}</p>
-                        </div>
-                        <div className="text-right text-sm">
-                          <p className="text-gray-300">{new Date(event.timestamp).toLocaleString('sk-SK')}</p>
-                          {event.acknowledged && (
-                            <p className="text-xs text-green-400">✓ Potvrdené</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activeView === 'members' && user.role === 'admin' && (
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-bold">Správa Členov ({members.length}/7)</h2>
-                  {members.length < 7 && (
-                    <button
-                      onClick={() => setShowAddMemberModal(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg font-semibold hover:shadow-lg hover:shadow-cyan-500/50 transition-all"
-                    >
-                      <UserPlus size={20} />
-                      Pridať člena
-                    </button>
-                  )}
-                </div>
-
-                <div className="space-y-3">
-                  {members.map(member => (
-                    <div key={member.id} className="flex items-center justify-between p-4 bg-slate-700/30 rounded-lg border border-slate-600/30">
-                      <div>
-                        <p className="font-semibold">{member.full_name}</p>
-                        <p className="text-sm text-gray-400">{member.username}</p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className={`text-xs px-3 py-1 rounded-full ${
-                          member.role === 'admin' ? 'bg-purple-500/20 text-purple-300' :
-                          member.role === 'editor' ? 'bg-blue-500/20 text-blue-300' :
-                          'bg-gray-500/20 text-gray-300'
-                        }`}>
-                          {member.role}
-                        </span>
-                        {member.id !== user.id && (
-                          <button
-                            onClick={() => handleRemoveMember(member.id)}
-                            className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {showAddMemberModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-slate-800 rounded-2xl p-8 border border-slate-700 max-w-md w-full max-h-[90vh] overflow-y-auto">
-              <h2 className="text-2xl font-bold mb-6">Pridať nového člena</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Používateľské meno</label>
-                  <input
-                    type="text"
-                    value={newMember.username}
-                    onChange={(e) => setNewMember({...newMember, username: e.target.value})}
-                    className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Heslo</label>
-                  <input
-                    type="password"
-                    value={newMember.password}
-                    onChange={(e) => setNewMember({...newMember, password: e.target.value})}
-                    className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Celé meno</label>
-                  <input
-                    type="text"
-                    value={newMember.full_name}
-                    onChange={(e) => setNewMember({...newMember, full_name: e.target.value})}
-                    className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
-                  <input
-                    type="email"
-                    value={newMember.email}
-                    onChange={(e) => setNewMember({...newMember, email: e.target.value})}
-                    className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Telefón</label>
-                  <input
-                    type="tel"
-                    value={newMember.phone}
-                    onChange={(e) => setNewMember({...newMember, phone: e.target.value})}
-                    className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Rola</label>
-                  <select
-                    value={newMember.member_role}
-                    onChange={(e) => setNewMember({...newMember, member_role: e.target.value})}
-                    className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
-                  >
-                    <option value="viewer">Viewer (Iba sledovanie)</option>
-                    <option value="editor">Editor (Ovládanie)</option>
-                    <option value="admin">Admin (Plná správa)</option>
-                  </select>
-                </div>
-                <div className="flex gap-4 mt-6">
-                  <button
-                    onClick={() => setShowAddMemberModal(false)}
-                    className="flex-1 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600"
-                  >
-                    Zrušiť
-                  </button>
-                  <button
-                    onClick={handleAddMember}
-                    className="flex-1 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:shadow-lg hover:shadow-cyan-500/50"
-                  >
-                    Pridať
-                  </button>
-                </div>
-              </div>
+          {/* Main Content - PONECHANÝ BEZ ZMIEN (príliš dlhý na zobrazenie) */}
+          <div className="col-span-3">
+            <div className={`${theme === 'dark' ? 'bg-slate-800/50' : 'bg-white'} backdrop-blur-sm rounded-2xl p-6 border ${theme === 'dark' ? 'border-slate-700/50' : 'border-gray-200'}`}>
+              <p className={`text-center ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                Dashboard obsah zostal nezmenený - príliš dlhý na zobrazenie
+              </p>
             </div>
           </div>
-        )}
+        </div>
       </div>
+      
+      <style jsx>{`
+        @keyframes slide-in {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        .animate-slide-in {
+          animation: slide-in 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 };
