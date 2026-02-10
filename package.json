@@ -8,7 +8,7 @@
     "start": "vite",
     "build": "vite build",
     "electron": "electron .",
-    "dev": "vite & electron .",
+    "dev": "node dev-runner.js",
     "dist": "npm run build && electron-builder",
     "postinstall": "electron-builder install-app-deps"
   },
@@ -26,6 +26,7 @@
     "files": [
       "dist/**/*",
       "main.js",
+      "preload.js",
       "package.json"
     ],
     "extraResources": [

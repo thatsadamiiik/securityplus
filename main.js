@@ -214,15 +214,15 @@ ipcMain.handle('configure-esp32-wifi', async (event, { portPath, ssid, password 
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Pošli WiFi credentials
-    const wifiCommand = `SET_WIFI ${ssid} ${password}`;
+    const wifiCommand = `SET_WIFI ${ssid}|${password}`;
     console.log('Sending WiFi credentials');
     await sendCommand(wifiCommand);
 
-    // Počkaj na odpoveď
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Počkaj na odpoveď z ESP32
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
     console.log('Configuration completed successfully');
-    return { success: true, message: 'WiFi credentials sent to ESP32' };
+    return { success: true, message: 'WiFi údaje odoslané na ESP32' };
   } catch (error) {
     console.error('Error in configure-esp32-wifi:', error);
     return { success: false, error: error.message };
