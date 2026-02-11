@@ -1,0 +1,78 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    /* Midnight Neon Palette */
+    --bg-primary: #050505;
+    /* Deep Black */
+    --bg-secondary: #0A0A0A;
+    /* Slightly lighter black for cards */
+    --bg-tertiary: #171717;
+    /* Borders/Hovers */
+
+    --text-main: #FFFFFF;
+    --text-muted: #A3A3A3;
+
+    --accent-purple: #D946EF;
+    /* Fuchsia-500/600 blend */
+    --accent-purple-glow: rgba(217, 70, 239, 0.3);
+
+    --status-green: #22C55E;
+    --status-red: #EF4444;
+
+    --font-body: 'Outfit', sans-serif;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-body);
+    background-color: var(--bg-primary);
+    color: var(--text-main);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar styling for dark theme */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: #262626;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #404040;
+}
+
+/* Utilities */
+.card-neon {
+    background: var(--bg-secondary);
+    border: 1px solid #262626;
+    border-radius: 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.card-neon:hover {
+    border-color: var(--bg-tertiary);
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.nav-pill {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border-radius: 9999px;
+}
+
+.text-glow {
+    text-shadow: 0 0 10px rgba(217, 70, 239, 0.5);
+}
