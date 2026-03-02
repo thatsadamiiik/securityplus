@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Home, Shield, Activity, Users, Settings, Lock, Unlock, DoorOpen, Eye, AlertTriangle, Bell, UserPlus, Trash2, LogOut, CheckCircle, BarChart3, TrendingUp, Clock, Zap, Volume2, VolumeX, Moon, Sun, User, PieChart, Calendar, Wifi, WifiOff, X, Usb, ChevronRight, Radio, Gauge, ShieldCheck, ShieldAlert, ArrowUpRight, ArrowDownRight, Footprints, Power } from 'lucide-react';
-import ESP32USBConfig from './ESP32USBConfig.jsx';
+
 
 const API_URL = 'http://35.158.231.80:3000/api';
 
@@ -52,8 +52,8 @@ const BuzzerPopup = ({ onDeactivate, onClose, eventDescription }) => {
           </div>
         </div>
 
-        <h2 className="text-2xl font-bold text-white text-center mb-2">⚠️ Alarm spustený!</h2>
-        <p className="text-red-300 text-center text-sm mb-2">Bzučiak je aktívny — bol detekovaný narušenie.</p>
+        <h2 className="text-2xl font-bold text-white text-center mb-2">Bolo detekované narušenie!</h2>
+        <p className="text-red-300 text-center text-sm mb-2">Alarm bol uvedený do prevádzky.</p>
         {eventDescription && (
           <p className="text-[#A3A3A3] text-center text-xs mb-6 bg-white/5 rounded-lg px-3 py-2">
             {eventDescription}
@@ -63,15 +63,15 @@ const BuzzerPopup = ({ onDeactivate, onClose, eventDescription }) => {
         <div className="space-y-3">
           <button
             onClick={onDeactivate}
-            className="w-full py-4 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-[0_0_20px_rgba(239,68,68,0.5)] transition-all active:scale-[0.98] text-lg"
+            className="w-full py-4 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-[0_0_20px_rgba(239,68,68,0.5)] transition-all active:scale-[0.98] text-lg flex flex-col items-center justify-center gap-1"
           >
-            🔇 Vypnúť bzučiak
+            <span>Vypnúť zvukové hlásenie</span>
           </button>
           <button
             onClick={onClose}
             className="w-full py-3 bg-white/5 hover:bg-white/10 text-[#A3A3A3] font-medium rounded-xl border border-white/10 transition-all text-sm"
           >
-            Zavrieť (alarm zostáva aktívny)
+            Ignorovať
           </button>
         </div>
       </div>
@@ -116,8 +116,9 @@ const StatCard = ({ icon: Icon, label, value, sub, trend }) => {
    All dots green by default.
    On trigger: yellow blink (alarm off), red blink (alarm on).
    ════════════════════════════════════════════ */
-const SensorCard = ({ sensor, alarmActive }) => {
+const SensorCard = ({ sensor, alarmActive, onToggle }) => {
   const isTriggered = sensor.status === 'triggered';
+  const isEnabled = Boolean(sensor.is_enabled);
 
   const IconComp = {
     door: DoorOpen,
@@ -130,7 +131,9 @@ const SensorCard = ({ sensor, alarmActive }) => {
   // - Triggered + alarm OFF: yellow/amber, blinking
   // - Triggered + alarm ON: red, blinking
   let dotClass;
-  if (isTriggered && alarmActive) {
+  if (!isEnabled) {
+    dotClass = 'bg-[#525252] shadow-none';
+  } else if (isTriggered && alarmActive) {
     dotClass = 'bg-[#EF4444] shadow-[0_0_12px_#EF4444] animate-pulse';
   } else if (isTriggered && !alarmActive) {
     dotClass = 'bg-[#F59E0B] shadow-[0_0_12px_#F59E0B] animate-pulse';
@@ -139,24 +142,37 @@ const SensorCard = ({ sensor, alarmActive }) => {
   }
 
   return (
-    <div className={`card-neon p-4 group transition-all duration-300 relative overflow-hidden ${isTriggered ? (alarmActive ? 'border-[#EF4444]/50' : 'border-[#F59E0B]/40') : 'hover:border-[#9357b5]/30'}`}>
-      {isTriggered && alarmActive && <div className="absolute inset-0 bg-[#EF4444]/5 animate-pulse" />}
-      {isTriggered && !alarmActive && <div className="absolute inset-0 bg-[#F59E0B]/5 animate-pulse" />}
+    <div className={`card-neon p-4 group transition-all duration-300 relative overflow-hidden ${!isEnabled ? 'opacity-50 grayscale border-white/5' : isTriggered ? (alarmActive ? 'border-[#EF4444]/50' : 'border-[#F59E0B]/40') : 'hover:border-[#9357b5]/30'}`}>
+      {isEnabled && isTriggered && alarmActive && <div className="absolute inset-0 bg-[#EF4444]/5 animate-pulse" />}
+      {isEnabled && isTriggered && !alarmActive && <div className="absolute inset-0 bg-[#F59E0B]/5 animate-pulse" />}
 
       <div className="flex items-center justify-between relative z-10">
         <div className="flex items-center gap-3">
-          <div className={`p-2.5 rounded-xl border transition-colors ${isTriggered
-            ? (alarmActive ? 'bg-[#EF4444]/10 text-[#EF4444] border-[#EF4444]/20' : 'bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/20')
-            : 'bg-white/5 text-[#A3A3A3] border-white/5 group-hover:text-[#9357b5] group-hover:border-[#9357b5]/20'
+          <div className={`p-2.5 rounded-xl border transition-colors ${!isEnabled
+            ? 'bg-transparent text-[#525252] border-white/5'
+            : isTriggered
+              ? (alarmActive ? 'bg-[#EF4444]/10 text-[#EF4444] border-[#EF4444]/20' : 'bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/20')
+              : 'bg-white/5 text-[#A3A3A3] border-white/5 group-hover:text-[#9357b5] group-hover:border-[#9357b5]/20'
             }`}>
             <IconComp size={18} />
           </div>
           <div>
-            <p className={`text-sm font-bold ${isTriggered ? (alarmActive ? 'text-[#EF4444]' : 'text-[#F59E0B]') : 'text-white'}`}>{sensor.name}</p>
+            <p className={`text-sm font-bold ${!isEnabled ? 'text-[#737373] line-through decoration-[#737373]/50' : isTriggered ? (alarmActive ? 'text-[#EF4444]' : 'text-[#F59E0B]') : 'text-white'} flex items-center gap-2`}>
+              {sensor.name}
+            </p>
             <p className="text-[9px] text-[#737373] uppercase tracking-wider font-semibold">{sensor.location}</p>
           </div>
         </div>
-        <div className={`w-3 h-3 rounded-full ${dotClass}`} />
+        <div className="flex items-center gap-3">
+          <div className={`w-3 h-3 rounded-full ${dotClass}`} />
+          <button
+            onClick={onToggle}
+            title={isEnabled ? 'Vypnúť senzor' : 'Zapnúť senzor'}
+            className={`p-1.5 rounded-lg border transition-all ${isEnabled ? 'bg-[#9357b5]/10 text-[#9357b5] border-[#9357b5]/20 hover:bg-[#9357b5] hover:text-white' : 'bg-white/5 text-[#737373] border-white/10 hover:bg-white/10 hover:text-white'}`}
+          >
+            <Power size={14} />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -171,6 +187,7 @@ const SensorCard = ({ sensor, alarmActive }) => {
 const ActivityItem = ({ event }) => {
   const isAlert = event.severity === 'alert' || event.severity === 'critical';
   const isWarning = event.severity === 'warning';
+  const count = event.count || 1;
 
   const IconComp = {
     door_opened: DoorOpen,
@@ -217,7 +234,7 @@ const ActivityItem = ({ event }) => {
   }
 
   return (
-    <div className={`flex items-start gap-3 px-4 py-3 rounded-xl transition-all ${rowBg}`}>
+    <div className={`flex items-start gap-3 px-4 py-3 rounded-xl transition-all ${rowBg} relative`}>
       <div className={`p-2 rounded-lg mt-0.5 ${iconBg}`}>
         <IconComp size={14} />
       </div>
@@ -236,9 +253,16 @@ const ActivityItem = ({ event }) => {
           </span>
         </div>
       </div>
-      {isAlert && (
-        <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse mt-2 flex-shrink-0" />
-      )}
+      <div className="flex items-center gap-2 flex-shrink-0 mt-1">
+        {count > 1 && (
+          <span className="bg-[#9357b5] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-[0_0_10px_rgba(147,87,181,0.3)] min-w-[24px] text-center">
+            +{count}
+          </span>
+        )}
+        {isAlert && (
+          <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+        )}
+      </div>
     </div>
   );
 };
@@ -274,6 +298,7 @@ const HouseholdDashboard = () => {
   const [newMember, setNewMember] = useState({
     username: '', password: '', full_name: '', email: '', phone: '', member_role: 'viewer'
   });
+  const [keypadCodeInput, setKeypadCodeInput] = useState('');
 
   const prevEsp32Online = useRef(null);
 
@@ -302,7 +327,7 @@ const HouseholdDashboard = () => {
 
   useEffect(() => {
     if (prevEsp32Online.current !== null && prevEsp32Online.current !== esp32Online) {
-      addToast(esp32Online ? 'ESP32 pripojené!' : 'ESP32 sa odpojilo!', esp32Online ? 'success' : 'error');
+      addToast(esp32Online ? 'Systém pripojený!' : 'Systém odpojený!', esp32Online ? 'success' : 'error');
     }
     prevEsp32Online.current = esp32Online;
   }, [esp32Online]);
@@ -342,6 +367,7 @@ const HouseholdDashboard = () => {
 
   const handleLogout = () => {
     setIsLoggedIn(false); setToken(''); setUser(null); setDashboardData(null);
+    setLoginForm({ username: '', password: '' });
     localStorage.removeItem('household_token'); localStorage.removeItem('household_user');
     addToast('Odhlásený', 'info');
   };
@@ -435,9 +461,27 @@ const HouseholdDashboard = () => {
     let dailyActivity = Array(7).fill(0);
     events.forEach(ev => {
       const eventDate = new Date(ev.timestamp);
-      if (eventDate >= monthStart) { monthStats.total++; if (ev.severity === 'alert') monthStats.alerts++; if (ev.severity === 'warning') monthStats.warnings++; }
-      if (eventDate >= weekStart) { weekStats.total++; if (ev.severity === 'alert') weekStats.alerts++; if (ev.severity === 'warning') weekStats.warnings++; const dayIndex = Math.floor((now - eventDate) / 86400000); if (dayIndex < 7) dailyActivity[6 - dayIndex]++; }
-      if (eventDate >= todayStart) { todayStats.total++; if (ev.severity === 'alert') todayStats.alerts++; if (ev.severity === 'warning') todayStats.warnings++; hourlyActivity[eventDate.getHours()]++; }
+      if (eventDate >= monthStart) {
+        monthStats.total++;
+        if (ev.severity === 'alert') monthStats.alerts++;
+        if (ev.severity === 'warning') monthStats.warnings++;
+      }
+      if (eventDate >= weekStart) {
+        weekStats.total++;
+        if (ev.severity === 'alert') weekStats.alerts++;
+        if (ev.severity === 'warning') weekStats.warnings++;
+        const evStr = eventDate.toDateString();
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(now.getTime() - i * 86400000);
+          if (evStr === d.toDateString()) dailyActivity[6 - i]++;
+        }
+      }
+      if (eventDate >= todayStart) {
+        todayStats.total++;
+        if (ev.severity === 'alert') todayStats.alerts++;
+        if (ev.severity === 'warning') todayStats.warnings++;
+        hourlyActivity[eventDate.getHours()]++;
+      }
       if (ev.sensor_name) { sensorCounts[ev.sensor_name] = (sensorCounts[ev.sensor_name] || 0) + 1; }
     });
     let mostActiveSensor = null; let maxCount = 0;
@@ -462,6 +506,136 @@ const HouseholdDashboard = () => {
       return () => clearInterval(interval);
     }
   }, [isLoggedIn, token]);
+
+  const clearHistory = async () => {
+    if (!window.confirm('Naozaj chcete vymazať celú históriu udalostí?')) return;
+    try {
+      const res = await fetch(`${API_URL}/household/events`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        addToast('História vymazaná', 'success');
+        fetchDashboard();
+      } else {
+        addToast('Nepodarilo sa vymazať históriu', 'error');
+      }
+    } catch {
+      addToast('Chyba pripojenia', 'error');
+    }
+  };
+
+  const handleSetCode = async () => {
+    if (!keypadCodeInput || keypadCodeInput.length < 4) {
+      addToast('Kód musí mať aspoň 4 znaky', 'error');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL}/household/me/keypad-code`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keypad_code: keypadCodeInput })
+      });
+      if (res.ok) {
+        addToast('Kód bol uložený', 'success');
+        fetchDashboard();
+        setKeypadCodeInput('');
+      } else {
+        addToast('Chyba pri ukladaní kódu', 'error');
+      }
+    } catch {
+      addToast('Chyba pripojenia', 'error');
+    }
+  };
+
+  const handleResetCode = async (memberId) => {
+    if (!window.confirm('Naozaj chcete zmazať kód tohto používateľa?')) return;
+    try {
+      const res = await fetch(`${API_URL}/household/members/${memberId}/reset-code`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        addToast('Kód používateľa zmazaný', 'success');
+        fetchDashboard();
+      } else {
+        addToast('Chyba', 'error');
+      }
+    } catch {
+      addToast('Chyba pripojenia', 'error');
+    }
+  };
+
+  const handleDeleteMember = async (memberId) => {
+    if (!window.confirm('Naozaj vymazať používateľa?')) return;
+    try {
+      const res = await fetch(`${API_URL}/household/members/${memberId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        addToast('Používateľ vymazaný', 'success');
+        fetchDashboard();
+      }
+    } catch {
+      addToast('Chyba pripojenia', 'error');
+    }
+  };
+
+  const handleAddMember = async () => {
+    if (!newMember.username || !newMember.password || !newMember.full_name) {
+      addToast('Vyplňte povinné údaje', 'error'); return;
+    }
+    try {
+      const res = await fetch(`${API_URL}/household/members/add`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newMember, role: newMember.member_role, household_id: dashboardData?.household?.id })
+      });
+      if (res.ok) {
+        addToast('Člen pridaný', 'success');
+        setNewMember({ username: '', password: '', full_name: '', email: '', phone: '', member_role: 'viewer' });
+        fetchDashboard();
+      } else { addToast('Chyba', 'error'); }
+    } catch { addToast('Spojenie zlyhalo', 'error'); }
+  };
+
+  const handleToggleSensor = async (sensorId) => {
+    try {
+      const res = await fetch(`${API_URL}/household/sensors/${sensorId}/toggle`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchDashboard();
+      } else {
+        addToast('Nepodarilo sa prepnúť senzor', 'error');
+      }
+    } catch {
+      addToast('Chyba pripojenia', 'error');
+    }
+  };
+
+  // Helper for grouping events
+  const groupEvents = (rawEvents) => {
+    if (!rawEvents || rawEvents.length === 0) return [];
+    const grouped = [];
+    let currentGroup = { ...rawEvents[0], count: 1 };
+
+    for (let i = 1; i < rawEvents.length; i++) {
+      const ev = rawEvents[i];
+      const timeDiff = Math.abs(new Date(currentGroup.timestamp) - new Date(ev.timestamp)) / 1000;
+
+      if (ev.sensor_name === currentGroup.sensor_name && ev.event_type === currentGroup.event_type && timeDiff <= 60) {
+        currentGroup.count += 1;
+      } else {
+        grouped.push(currentGroup);
+        currentGroup = { ...ev, count: 1 };
+      }
+    }
+    grouped.push(currentGroup);
+    return grouped;
+  };
 
   /* ═══════════════════════════════════════════
      LOGIN SCREEN
@@ -553,6 +727,10 @@ const HouseholdDashboard = () => {
                 Členovia
               </button>
             )}
+            <button onClick={() => setActiveView('mycode')}
+              className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all ${activeView === 'mycode' ? 'bg-[#9357b5] text-white shadow-[0_0_15px_rgba(147,87,181,0.5)]' : 'text-[#A3A3A3] hover:text-white hover:bg-white/5'}`}>
+              Kód
+            </button>
             <div className="w-px h-6 bg-white/10 mx-2" />
             <button onClick={toggleAlarm}
               className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all flex items-center gap-2 border ${alarmActive
@@ -604,16 +782,21 @@ const HouseholdDashboard = () => {
                 </h3>
                 <div className="grid grid-cols-1 gap-3">
                   {sensors.map(sensor => (
-                    <SensorCard key={sensor.id} sensor={sensor} alarmActive={alarmActive} />
+                    <SensorCard key={sensor.id} sensor={sensor} alarmActive={alarmActive} onToggle={() => handleToggleSensor(sensor.id)} />
                   ))}
                 </div>
               </div>
 
               <div className="lg:col-span-3">
-                <h3 className="text-lg font-bold text-white mb-5 flex items-center gap-2">
-                  <Clock size={20} className="text-[#9357b5]" />
-                  História Aktivity
-                </h3>
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <Clock size={20} className="text-[#9357b5]" />
+                    História Aktivity
+                  </h3>
+                  <button onClick={clearHistory} className="text-xs flex items-center gap-1 text-[#EF4444] hover:bg-[#EF4444]/10 px-3 py-1.5 rounded-lg transition-all">
+                    <Trash2 size={14} /> Vymazať
+                  </button>
+                </div>
                 <div className="card-neon p-2 overflow-hidden">
                   <div className="max-h-[400px] overflow-y-auto space-y-1 pr-1 custom-scrollbar">
                     {events.length === 0 ? (
@@ -622,8 +805,8 @@ const HouseholdDashboard = () => {
                         <p className="text-sm font-medium">Žiadna aktivita</p>
                       </div>
                     ) : (
-                      events.slice(0, 50).map(event => (
-                        <ActivityItem key={event.id} event={event} />
+                      groupEvents(events).slice(0, 50).map((event, i) => (
+                        <ActivityItem key={event.id || i} event={event} />
                       ))
                     )}
                   </div>
@@ -634,18 +817,261 @@ const HouseholdDashboard = () => {
         )}
 
         {activeView === 'statistics' && (
-          <div className="text-center py-20">
-            <BarChart3 size={48} className="mx-auto text-[#9357b5] mb-4 opacity-50" />
-            <h2 className="text-2xl font-bold text-white">Štatistiky sú vo vývoji</h2>
-            <p className="text-[#A3A3A3]">Podrobné grafy a analýzy budú dostupné čoskoro.</p>
+          <div className="space-y-8 animate-fade-in-up">
+            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+              <PieChart className="text-[#9357b5]" />
+              Podrobné Štatistiky
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="card-neon p-6">
+                <h3 className="text-lg font-bold text-white mb-4">Aktivita za posledných 7 dní</h3>
+                <div className="flex items-end gap-2 h-40">
+                  {statistics.dailyActivity.map((count, idx) => (
+                    <div key={idx} className="flex-1 flex flex-col justify-end group">
+                      <div
+                        className="w-full bg-[#9357b5] rounded-t-lg transition-all group-hover:bg-[#a66cc9]"
+                        style={{ height: `${Math.max(5, (count / Math.max(...statistics.dailyActivity, 1)) * 100)}%` }}
+                      ></div>
+                      <p className="text-[10px] text-center mt-2 text-[#A3A3A3]">
+                        {['1', '2', '3', '4', '5', '6', '7'][idx]}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="card-neon p-6">
+                <h3 className="text-lg font-bold text-white mb-4">Aktivita počas dňa (24h)</h3>
+                <div className="flex items-end gap-1 h-40">
+                  {statistics.hourlyActivity.filter((_, i) => i % 2 === 0).map((count, idx) => (
+                    <div key={idx} className="flex-1 flex flex-col justify-end group">
+                      <div
+                        className="w-full bg-[#3b82f6] rounded-t-lg transition-all group-hover:bg-[#60a5fa]"
+                        style={{ height: `${Math.max(5, (count / Math.max(...statistics.hourlyActivity, 1)) * 100)}%` }}
+                      ></div>
+                      <p className="text-[9px] text-center mt-2 text-[#737373]">{idx * 2}h</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="card-neon p-6">
+              <h3 className="text-lg font-bold text-white mb-6">Prehľad Senzorov</h3>
+              <div className="space-y-4">
+                {statistics.mostActiveSensor ? (
+                  <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
+                    <div>
+                      <p className="text-sm font-bold text-white">Najaktívnejší senzor</p>
+                      <p className="text-xs text-[#A3A3A3]">{statistics.mostActiveSensor.name}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-2xl font-bold text-[#9357b5]">{statistics.mostActiveSensor.count}</span>
+                      <p className="text-[10px] text-[#737373] uppercase">Udalostí</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#737373]">Nedostatok údajov pre zobrazenie najaktívnejšieho senzora.</p>
+                )}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="p-4 bg-white/5 rounded-xl border border-white/5 text-center">
+                    <p className="text-3xl font-bold text-white">{statistics.month.total}</p>
+                    <p className="text-xs text-[#737373] uppercase mt-1">Spolu za mesiac</p>
+                  </div>
+                  <div className="p-4 bg-red-500/10 rounded-xl border border-red-500/20 text-center">
+                    <p className="text-3xl font-bold text-red-400">{statistics.month.alerts}</p>
+                    <p className="text-xs text-red-500/60 uppercase mt-1">Poplachov</p>
+                  </div>
+                  <div className="p-4 bg-amber-500/10 rounded-xl border border-amber-500/20 text-center">
+                    <p className="text-3xl font-bold text-amber-400">{statistics.month.warnings}</p>
+                    <p className="text-xs text-amber-500/60 uppercase mt-1">Varovaní</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
         {activeView === 'members' && (
-          <div className="text-center py-20">
-            <Users size={48} className="mx-auto text-[#9357b5] mb-4 opacity-50" />
-            <h2 className="text-2xl font-bold text-white">Správa Členov</h2>
-            <p className="text-[#A3A3A3]">Zoznam a správa oprávnení.</p>
+          <div className="space-y-8 animate-fade-in-up">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                <Users className="text-[#9357b5]" />
+                Správa Členov a Kódov
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-4">
+                <div className="space-y-4">
+                  {members.map(member => (
+                    <div key={member.id} className="card-neon p-5 flex items-center justify-between group">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-[#171717] border border-[#262626] flex items-center justify-center">
+                          <User size={20} className={member.role === 'admin' ? 'text-[#9357b5]' : 'text-[#A3A3A3]'} />
+                        </div>
+                        <div>
+                          <p className="font-bold text-white flex items-center gap-2">
+                            {member.full_name}
+                            {member.id === user.id && <span className="px-2 py-0.5 rounded bg-[#9357b5]/20 text-[#9357b5] text-[10px] uppercase">Vy</span>}
+                          </p>
+                          <p className="text-xs text-[#A3A3A3]">{member.email || member.username}</p>
+                          <div className="flex items-center gap-2 mt-2 text-[10px]">
+                            <span className="uppercase text-[#737373] bg-white/5 px-2 py-0.5 rounded">{member.role}</span>
+                            {member.keypad_code ? (
+                              <span className="text-[#22C55E] bg-[#22C55E]/10 px-2 py-0.5 rounded flex items-center gap-1"><Lock size={10} /> Kód nastavený</span>
+                            ) : (
+                              <span className="text-[#EF4444] bg-[#EF4444]/10 px-2 py-0.5 rounded flex items-center gap-1"><Unlock size={10} /> Bez kódu</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {user.role === 'admin' && member.id !== user.id && (
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => handleResetCode(member.id)} className="p-2 hover:bg-amber-500/10 text-amber-500 rounded-lg transition-colors" title="Resetovať kód">
+                            <Unlock size={16} />
+                          </button>
+                          <button onClick={() => handleDeleteMember(member.id)} className="p-2 hover:bg-red-500/10 text-red-500 rounded-lg transition-colors" title="Odstrániť člena">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {user.role === 'admin' && (
+                  <div className="card-neon p-6 mt-4 border-dashed border-[#9357b5]/30 bg-[#9357b5]/5">
+                    <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2"><UserPlus size={16} className="text-[#9357b5]" /> Pridať nového člena</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <input type="text" placeholder="Používateľské meno" value={newMember.username} onChange={e => setNewMember({ ...newMember, username: e.target.value })} className="w-full px-3 py-2 bg-[#171717] border border-[#262626] rounded-xl text-xs text-white" />
+                      <input type="password" placeholder="Heslo" value={newMember.password} onChange={e => setNewMember({ ...newMember, password: e.target.value })} className="w-full px-3 py-2 bg-[#171717] border border-[#262626] rounded-xl text-xs text-white" />
+                      <input type="text" placeholder="Celé meno" value={newMember.full_name} onChange={e => setNewMember({ ...newMember, full_name: e.target.value })} className="w-full px-3 py-2 bg-[#171717] border border-[#262626] rounded-xl text-xs text-white" />
+                      <select value={newMember.member_role} onChange={e => setNewMember({ ...newMember, member_role: e.target.value })} className="w-full px-3 py-2 bg-[#171717] border border-[#262626] rounded-xl text-xs text-white">
+                        <option value="viewer">Viewer (Zobrazenie)</option>
+                        <option value="admin">Admin (Správa)</option>
+                      </select>
+                      <button onClick={handleAddMember} className="col-span-2 py-2 bg-[#9357b5] text-white text-xs font-bold rounded-xl mt-2 transition-all hover:bg-[#a66cc9]">Vytvoriť používateľa</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div className="card-neon p-6 sticky top-28">
+                  <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                    <Lock size={18} className="text-[#9357b5]" />
+                    Váš systémový kód
+                  </h3>
+                  <p className="text-xs text-[#A3A3A3] mb-6">
+                    Nastavte si kód, ktorým môžete deaktivovať zvukové varovanie.
+                  </p>
+                  {(() => {
+                    const myMember = members.find(m => m.id === user.id);
+                    const hasCode = myMember && myMember.keypad_code;
+                    if (hasCode) {
+                      return (
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-3 p-4 bg-[#22C55E]/10 border border-[#22C55E]/20 rounded-xl">
+                            <Lock size={20} className="text-[#22C55E]" />
+                            <div>
+                              <p className="text-sm font-bold text-[#22C55E]">Kód je nastavený</p>
+                              <p className="text-[10px] text-[#22C55E]/60">Váš systémový kód je aktívny a funkčný.</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleResetCode(user.id)}
+                            className="w-full py-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-bold rounded-xl border border-amber-500/20 transition-all"
+                          >
+                            Resetovať môj kód
+                          </button>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-[10px] font-bold text-[#737373] mb-2 uppercase tracking-wide">Nový kód</label>
+                            <input
+                              type="password"
+                              value={keypadCodeInput}
+                              onChange={e => setKeypadCodeInput(e.target.value)}
+                              className="w-full px-4 py-3 bg-[#171717] border border-[#262626] rounded-xl text-white text-sm focus:outline-none focus:border-[#9357b5] focus:shadow-[0_0_15px_rgba(147,87,181,0.3)] transition-all font-mono tracking-[0.5em] text-center"
+                              placeholder="••••"
+                              maxLength={10}
+                            />
+                          </div>
+                          <button
+                            onClick={handleSetCode}
+                            className="w-full py-3 bg-[#9357b5] hover:bg-[#7d4a9e] text-white font-bold rounded-xl shadow-[0_0_15px_rgba(147,87,181,0.3)] transition-all"
+                          >
+                            Uložiť kód
+                          </button>
+                        </div>
+                      );
+                    }
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeView === 'mycode' && (
+          <div className="space-y-8 animate-fade-in-up max-w-md mx-auto">
+            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+              <Lock className="text-[#9357b5]" />
+              Môj systémový kód
+            </h2>
+            <div className="card-neon p-6">
+              <p className="text-xs text-[#A3A3A3] mb-6">
+                Nastavte si kód, ktorým môžete deaktivovať zvukové varovanie pomocou fyzickej klávesnice.
+              </p>
+              {(() => {
+                const myMember = members.find(m => m.id === user.id);
+                const hasCode = myMember && myMember.keypad_code;
+                if (hasCode) {
+                  return (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 p-4 bg-[#22C55E]/10 border border-[#22C55E]/20 rounded-xl">
+                        <Lock size={20} className="text-[#22C55E]" />
+                        <div>
+                          <p className="text-sm font-bold text-[#22C55E]">Kód je nastavený</p>
+                          <p className="text-[10px] text-[#22C55E]/60">Váš systémový kód je aktívny a funkčný.</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleResetCode(user.id)}
+                        className="w-full py-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-bold rounded-xl border border-amber-500/20 transition-all"
+                      >
+                        Resetovať môj kód
+                      </button>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-[10px] font-bold text-[#737373] mb-2 uppercase tracking-wide">Nový kód</label>
+                        <input
+                          type="password"
+                          value={keypadCodeInput}
+                          onChange={e => setKeypadCodeInput(e.target.value)}
+                          className="w-full px-4 py-3 bg-[#171717] border border-[#262626] rounded-xl text-white text-sm focus:outline-none focus:border-[#9357b5] focus:shadow-[0_0_15px_rgba(147,87,181,0.3)] transition-all font-mono tracking-[0.5em] text-center"
+                          placeholder="••••"
+                          maxLength={10}
+                        />
+                      </div>
+                      <button
+                        onClick={handleSetCode}
+                        className="w-full py-3 bg-[#9357b5] hover:bg-[#7d4a9e] text-white font-bold rounded-xl shadow-[0_0_15px_rgba(147,87,181,0.3)] transition-all"
+                      >
+                        Uložiť kód
+                      </button>
+                    </div>
+                  );
+                }
+              })()}
+            </div>
           </div>
         )}
       </main>
