@@ -4,9 +4,7 @@ import { Home, Shield, Activity, Users, Settings, Lock, Unlock, DoorOpen, Eye, A
 
 const API_URL = 'http://35.158.231.80:3000/api';
 
-/* ════════════════════════════════════════════
-   TOAST SYSTEM
-   ════════════════════════════════════════════ */
+
 const Toast = ({ message, type = 'info', onClose }) => {
   useEffect(() => {
     const timer = setTimeout(onClose, 4000);
@@ -38,9 +36,7 @@ const ToastContainer = ({ toasts, removeToast }) => (
   </div>
 );
 
-/* ════════════════════════════════════════════
-   BUZZER POPUP MODAL
-   ════════════════════════════════════════════ */
+
 const BuzzerPopup = ({ onDeactivate, onClose, eventDescription }) => {
   return (
     <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -79,9 +75,7 @@ const BuzzerPopup = ({ onDeactivate, onClose, eventDescription }) => {
   );
 };
 
-/* ════════════════════════════════════════════
-   COMPONENTS: STAT CARD
-   ════════════════════════════════════════════ */
+
 const StatCard = ({ icon: Icon, label, value, sub, trend }) => {
   const trendColor = trend > 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
 
@@ -111,11 +105,7 @@ const StatCard = ({ icon: Icon, label, value, sub, trend }) => {
   );
 };
 
-/* ════════════════════════════════════════════
-   SENSOR CARD — NEW DOT LOGIC
-   All dots green by default.
-   On trigger: yellow blink (alarm off), red blink (alarm on).
-   ════════════════════════════════════════════ */
+
 const SensorCard = ({ sensor, alarmActive, onToggle }) => {
   const isTriggered = sensor.status === 'triggered';
   const isEnabled = Boolean(sensor.is_enabled);
@@ -126,10 +116,7 @@ const SensorCard = ({ sensor, alarmActive, onToggle }) => {
     motion: Footprints,
   }[sensor.type] || DoorOpen;
 
-  // Dot logic:
-  // - Default (active/inactive): green, steady glow
-  // - Triggered + alarm OFF: yellow/amber, blinking
-  // - Triggered + alarm ON: red, blinking
+
   let dotClass;
   if (!isEnabled) {
     dotClass = 'bg-[#525252] shadow-none';
@@ -178,12 +165,7 @@ const SensorCard = ({ sensor, alarmActive, onToggle }) => {
   );
 };
 
-/* ════════════════════════════════════════════
-   ACTIVITY HISTORY ITEM — coloring by severity
-   severity 'alert'/'critical' → red tint
-   severity 'warning' → mild orange tint
-   severity 'info' → subtle gray
-   ════════════════════════════════════════════ */
+
 const ActivityItem = ({ event }) => {
   const isAlert = event.severity === 'alert' || event.severity === 'critical';
   const isWarning = event.severity === 'warning';
@@ -267,9 +249,7 @@ const ActivityItem = ({ event }) => {
   );
 };
 
-/* ════════════════════════════════════════════
-   MAIN APP COMPONENT
-   ════════════════════════════════════════════ */
+
 const HouseholdDashboard = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [token, setToken] = useState('');
@@ -765,9 +745,9 @@ const HouseholdDashboard = () => {
               <StatCard icon={Activity} label="Dnešná Aktivita" value={statistics.today.total}
                 trend={statistics.today.total > 0 ? Math.round((statistics.today.total / Math.max(statistics.week.total / 7, 1)) * 10) : 0}
                 sub="Udalostí za 24h" />
-              <StatCard icon={ShieldCheck} label="Aktívne Senzory" value={sensors.length}
+              <StatCard icon={ShieldCheck} label="Aktívne senzory" value={sensors.length}
                 sub={`${sensors.filter(s => s.status === 'active').length} online`} />
-              <StatCard icon={AlertTriangle} label="Bezpečnostné Výstrahy" value={statistics.today.alerts}
+              <StatCard icon={AlertTriangle} label="Bezpečnostné výstrahy" value={statistics.today.alerts}
                 trend={statistics.today.alerts > 0 ? -(statistics.today.alerts) : 0}
                 sub={statistics.today.alerts > 0 ? 'Dnešné výstrahy' : 'Žiadne výstrahy'} />
               <StatCard icon={Users} label="Počet registrovaných používateľov" value={members.length} />
@@ -778,7 +758,7 @@ const HouseholdDashboard = () => {
               <div className="lg:col-span-2">
                 <h3 className="text-lg font-bold text-white mb-5 flex items-center gap-2">
                   <Activity size={20} className="text-[#9357b5]" />
-                  Stav Senzorov
+                  Stav senzorov
                 </h3>
                 <div className="grid grid-cols-1 gap-3">
                   {sensors.map(sensor => (

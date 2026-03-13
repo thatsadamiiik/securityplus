@@ -18,7 +18,6 @@ Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
 String currentKeypadCode = "";
 
-// --- PINY ---
 const int MC38_SENSOR_1 = 21;
 const int MC38_SENSOR_2 = 19;
 const int MOTION_SENSOR = 18;
@@ -141,16 +140,13 @@ void loop() {
     }
   }
 
-  // 0.5 BZUČIAK PÍPANIE (800ms ON, 200ms OFF = alarmový vzor)
   if (buzzerActive) {
     unsigned long buzzerElapsed = millis() - lastBuzzerToggle;
     if (buzzerPinState && buzzerElapsed >= 800) {
-      // Bol zapnuty 800ms, kratko vypnut
       buzzerPinState = false;
       digitalWrite(BUZZER_PIN, LOW);
       lastBuzzerToggle = millis();
     } else if (!buzzerPinState && buzzerElapsed >= 200) {
-      // Bol vypnuty 200ms, znova zapnut
       buzzerPinState = true;
       digitalWrite(BUZZER_PIN, HIGH);
       lastBuzzerToggle = millis();
@@ -213,11 +209,11 @@ void loop() {
 
       if (sensor1Enabled) {
         if (mc1_currentState == LOW) {
-          sendStatus("INFO", "Senzor 1: Dvere zatvorene");
-          sendEvent(1, "door_closed", alarmActive ? "warning" : "info", "Hlavne dvere zatvorene");
+          sendStatus("INFO", "Senzor 1: Okno zatvorene");
+          sendEvent(1, "door_closed", alarmActive ? "warning" : "info", "Okno zatvorené.");
         } else {
-          sendStatus(alarmActive ? "ALARM_ON" : "INFO", "Senzor 1: Dvere otvorene!");
-          sendEvent(1, "door_opened", alarmActive ? "alert" : "warning", "Hlavne dvere otvorene");
+          sendStatus(alarmActive ? "ALARM_ON" : "INFO", "Senzor 1: Okno otvorene!");
+          sendEvent(1, "door_opened", alarmActive ? "alert" : "warning", "Okno otvorené!");
 
           if (alarmActive && millis() >= ignoreSensorsUntil) {
             activateBuzzer();
@@ -238,11 +234,11 @@ void loop() {
 
       if (sensor2Enabled) {
         if (mc2_currentState == LOW) {
-          sendStatus("INFO", "Senzor 2: Okno zatvorene");
-          sendEvent(2, "door_closed", alarmActive ? "warning" : "info", "Okno obyvacka zatvorene");
+          sendStatus("INFO", "Senzor 2: Balkonove dvere zatvorene");
+          sendEvent(2, "door_closed", alarmActive ? "warning" : "info", "Balkónové dvere zatvorené.");
         } else {
-          sendStatus(alarmActive ? "ALARM_ON" : "INFO", "Senzor 2: Okno otvorene!");
-          sendEvent(2, "door_opened", alarmActive ? "alert" : "warning", "Okno obyvacka otvorene");
+          sendStatus(alarmActive ? "ALARM_ON" : "INFO", "Senzor 2: Balkonove dvere otvorene!");
+          sendEvent(2, "door_opened", alarmActive ? "alert" : "warning", "Balkónové dvere otvorené!");
 
           if (alarmActive && millis() >= ignoreSensorsUntil) {
             activateBuzzer();
@@ -266,7 +262,7 @@ void loop() {
         if (millis() - lastMotionEvent >= MOTION_COOLDOWN) {
           lastMotionEvent = millis();
           sendStatus(alarmActive ? "ALARM_ON" : "INFO", "Pohyb detekovany!");
-          sendEvent(4, "motion_detected", alarmActive ? "alert" : "info", "Zaznamenany pohyb v chodbe");
+          sendEvent(4, "motion_detected", alarmActive ? "alert" : "info", "Zaznamenaný pohyb v chodbe.");
 
           if (alarmActive) {
             activateBuzzer();
