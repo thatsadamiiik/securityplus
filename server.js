@@ -232,7 +232,7 @@ app.get('/api/household/dashboard', authenticateToken, async (req, res) => {
       [household_id]
     );
 
-    // Získaj nedávne udalosti
+    // Získaj nedávne udalosti (max 100 pre zobrazenie)
     const [events] = await pool.execute(
       `SELECT 
   e.*,
@@ -246,6 +246,46 @@ app.get('/api/household/dashboard', authenticateToken, async (req, res) => {
       [household_id]
     );
 
+    // Získaj štatistiky bez limitu (pre štatistiky)
+    const now = new Date();
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const weekStart = new Date(now.getTime() - 7 * 86400000);
+    const monthStart = new Date(now.getTime() - 30 * 86400000);
+
+    const [statsRows] = await pool.execute(
+      `SELECT
+        SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) AS today_total,
+        SUM(CASE WHEN timestamp >= ? AND severity = 'alert' THEN 1 ELSE 0 END) AS today_alerts,
+        SUM(CASE WHEN timestamp >= ? AND severity = 'warning' THEN 1 ELSE 0 END) AS today_warnings,
+        SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) AS week_total,
+        SUM(CASE WHEN timestamp >= ? AND severity = 'alert' THEN 1 ELSE 0 END) AS week_alerts,
+        SUM(CASE WHEN timestamp >= ? AND severity = 'warning' THEN 1 ELSE 0 END) AS week_warnings,
+        SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) AS month_total,
+        SUM(CASE WHEN timestamp >= ? AND severity = 'alert' THEN 1 ELSE 0 END) AS month_alerts,
+        SUM(CASE WHEN timestamp >= ? AND severity = 'warning' THEN 1 ELSE 0 END) AS month_warnings
+      FROM events
+      WHERE household_id = ?`,
+      [
+        todayStart, todayStart, todayStart,
+        weekStart, weekStart, weekStart,
+        monthStart, monthStart, monthStart,
+        household_id
+      ]
+    );
+
+    const stats = statsRows[0] || {};
+
+    // Získaj hodinovú aktivitu pre dnešok (HOUR() používa správne časové pásmo MySQL)
+    const [hourlyRows] = await pool.execute(
+      `SELECT HOUR(timestamp) as hour, COUNT(*) as count
+       FROM events
+       WHERE household_id = ? AND DATE(timestamp) = CURDATE()
+       GROUP BY HOUR(timestamp)`,
+      [household_id]
+    );
+    const hourlyActivity = Array(24).fill(0);
+    hourlyRows.forEach(row => { hourlyActivity[row.hour] = Number(row.count); });
+
     // Získaj členov domácnosti
     const [members] = await pool.execute(
       'SELECT id, username, full_name, email, phone, role, last_login, is_active, keypad_code FROM household_users WHERE household_id = ? AND is_active = TRUE',
@@ -257,6 +297,12 @@ app.get('/api/household/dashboard', authenticateToken, async (req, res) => {
       sensors,
       events,
       members,
+      event_stats: {
+        today: { total: Number(stats.today_total || 0), alerts: Number(stats.today_alerts || 0), warnings: Number(stats.today_warnings || 0) },
+        week: { total: Number(stats.week_total || 0), alerts: Number(stats.week_alerts || 0), warnings: Number(stats.week_warnings || 0) },
+        month: { total: Number(stats.month_total || 0), alerts: Number(stats.month_alerts || 0), warnings: Number(stats.month_warnings || 0) }
+      },
+      hourly_activity: hourlyActivity,
       system_status: {
         online: realOnline,
         last_seen: hh.system_last_seen,

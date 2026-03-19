@@ -17,7 +17,7 @@
     "productName": "SecurityPlus",
     "win": {
       "target": "nsis",
-      "icon": "icon.ico"
+      "icon": "assets/icons/icon.ico"
     },
     "nsis": {
       "oneClick": false,

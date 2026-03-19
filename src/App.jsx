@@ -2,14 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Home, Shield, Activity, Users, Settings, Lock, Unlock, DoorOpen, Eye, AlertTriangle, Bell, UserPlus, Trash2, LogOut, CheckCircle, BarChart3, TrendingUp, Clock, Zap, Volume2, VolumeX, Moon, Sun, User, PieChart, Calendar, Wifi, WifiOff, X, Usb, ChevronRight, Radio, Gauge, ShieldCheck, ShieldAlert, ArrowUpRight, ArrowDownRight, Footprints, Power } from 'lucide-react';
 
 
-const API_URL = 'http://35.158.231.80:3000/api';
+const API_URL = 'https://api.humaj.xyz/api';
 
 
 const Toast = ({ message, type = 'info', onClose }) => {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
-    const timer = setTimeout(onClose, 4000);
+    const timer = setTimeout(() => onCloseRef.current(), 5000);
     return () => clearTimeout(timer);
-  }, [onClose]);
+  }, []);
 
   const styles = {
     success: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
@@ -37,7 +40,7 @@ const ToastContainer = ({ toasts, removeToast }) => (
 );
 
 
-const BuzzerPopup = ({ onDeactivate, onClose, eventDescription }) => {
+const BuzzerPopup = ({ onDeactivate, onClose }) => {
   return (
     <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="bg-[#0A0A0A] border-2 border-red-500/50 rounded-2xl p-8 max-w-md w-full mx-4 shadow-[0_0_60px_rgba(239,68,68,0.3)] animate-fade-in-up">
@@ -49,12 +52,7 @@ const BuzzerPopup = ({ onDeactivate, onClose, eventDescription }) => {
         </div>
 
         <h2 className="text-2xl font-bold text-white text-center mb-2">Bolo detekované narušenie!</h2>
-        <p className="text-red-300 text-center text-sm mb-2">Alarm bol uvedený do prevádzky.</p>
-        {eventDescription && (
-          <p className="text-[#A3A3A3] text-center text-xs mb-6 bg-white/5 rounded-lg px-3 py-2">
-            {eventDescription}
-          </p>
-        )}
+        <p className="text-red-300 text-center text-sm mb-6">Alarm bol uvedený do prevádzky.</p>
 
         <div className="space-y-3">
           <button
@@ -76,8 +74,8 @@ const BuzzerPopup = ({ onDeactivate, onClose, eventDescription }) => {
 };
 
 
-const StatCard = ({ icon: Icon, label, value, sub, trend }) => {
-  const trendColor = trend > 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
+const StatCard = ({ icon: Icon, label, value, sub, trend, iconColor }) => {
+  const trendColor = iconColor ? `text-[${iconColor}]` : (trend > 0 ? 'text-[#22C55E]' : 'text-[#EF4444]');
 
   return (
     <div className="card-neon p-6 relative overflow-hidden group hover:border-[#9357b5]/50 transition-all duration-500 h-full flex flex-col justify-between">
@@ -87,8 +85,8 @@ const StatCard = ({ icon: Icon, label, value, sub, trend }) => {
           <p className="text-[11px] font-bold text-[#A3A3A3] uppercase tracking-widest mb-2">{label}</p>
           <h3 className="text-4xl font-bold text-white tracking-tight drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">{value}</h3>
         </div>
-        <div className={`p-3 rounded-xl bg-white/5 border border-white/5 ${trendColor} group-hover:scale-110 transition-transform duration-300`}>
-          <Icon size={24} />
+        <div className={`p-3 rounded-xl bg-white/5 border border-white/5 group-hover:scale-110 transition-transform duration-300`} style={iconColor ? { color: iconColor } : undefined}>
+          <Icon size={24} className={iconColor ? undefined : trendColor} />
         </div>
       </div>
       {(sub || trend !== undefined) && (
@@ -106,7 +104,7 @@ const StatCard = ({ icon: Icon, label, value, sub, trend }) => {
 };
 
 
-const SensorCard = ({ sensor, alarmActive, onToggle }) => {
+const SensorCard = ({ sensor, alarmActive, onToggle, canToggle }) => {
   const isTriggered = sensor.status === 'triggered';
   const isEnabled = Boolean(sensor.is_enabled);
 
@@ -152,13 +150,15 @@ const SensorCard = ({ sensor, alarmActive, onToggle }) => {
         </div>
         <div className="flex items-center gap-3">
           <div className={`w-3 h-3 rounded-full ${dotClass}`} />
-          <button
-            onClick={onToggle}
-            title={isEnabled ? 'Vypnúť senzor' : 'Zapnúť senzor'}
-            className={`p-1.5 rounded-lg border transition-all ${isEnabled ? 'bg-[#9357b5]/10 text-[#9357b5] border-[#9357b5]/20 hover:bg-[#9357b5] hover:text-white' : 'bg-white/5 text-[#737373] border-white/10 hover:bg-white/10 hover:text-white'}`}
-          >
-            <Power size={14} />
-          </button>
+          {canToggle && (
+            <button
+              onClick={onToggle}
+              title={isEnabled ? 'Vypnúť senzor' : 'Zapnúť senzor'}
+              className={`p-1.5 rounded-lg border transition-all ${isEnabled ? 'bg-[#9357b5]/10 text-[#9357b5] border-[#9357b5]/20 hover:bg-[#9357b5] hover:text-white' : 'bg-white/5 text-[#737373] border-white/10 hover:bg-white/10 hover:text-white'}`}
+            >
+              <Power size={14} />
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -270,8 +270,10 @@ const HouseholdDashboard = () => {
 
   // POPUP STATE
   const [showBuzzerPopup, setShowBuzzerPopup] = useState(false);
+  const showBuzzerPopupRef = useRef(false);
   const [buzzerEventDesc, setBuzzerEventDesc] = useState('');
   const lastSeenEventId = useRef(0);
+  const buzzerDismissed = useRef(false);
 
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
@@ -293,7 +295,8 @@ const HouseholdDashboard = () => {
     month: { total: 0, alerts: 0, warnings: 0 },
     mostActiveSensor: null,
     hourlyActivity: Array(24).fill(0),
-    dailyActivity: Array(7).fill(0)
+    dailyActivity: Array(7).fill(0),
+    dailyLabels: ['', '', '', '', '', '', '']
   });
 
   const addToast = (message, type = 'info') => {
@@ -371,30 +374,33 @@ const HouseholdDashboard = () => {
       if (res.status === 403 || res.status === 401) { handleLogout(); addToast('Relácia vypršala', 'warning'); return; }
       if (!res.ok) throw new Error('Fetch failed');
       const data = await res.json();
-      setDashboardData(data);
-      setEsp32Online(data.system_status?.online === true);
 
+      // Buzzer/popup logic always runs (uses refs, not re-render dependent)
       const serverBuzzerActive = data.system_status?.buzzer_active === true;
       setBuzzerActive(serverBuzzerActive);
+
+      // Auto-close popup when buzzer becomes inactive (e.g. code entered on keypad)
+      if (!serverBuzzerActive) {
+        setShowBuzzerPopup(false);
+        showBuzzerPopupRef.current = false;
+        buzzerDismissed.current = false;
+      }
 
       // POPUP TRIGGER: Check for new alert events OR buzzer_active from server
       const alarmOn = data.household?.alarm_status === 'active';
       if (alarmOn && data.events && data.events.length > 0) {
-        // Find the newest event
-        const newestEvent = data.events[0]; // events are sorted DESC by timestamp
+        const newestEvent = data.events[0];
         const newestId = newestEvent.id;
 
         if (newestId > lastSeenEventId.current && lastSeenEventId.current > 0) {
-          // There are new events since last poll
           const newAlertEvents = data.events.filter(e =>
             e.id > lastSeenEventId.current &&
             (e.severity === 'alert' || e.severity === 'critical')
           );
 
-          if (newAlertEvents.length > 0) {
-            // New alert event during active alarm → show popup
-            setBuzzerEventDesc(newAlertEvents[0].description || newAlertEvents[0].event_type);
+          if (newAlertEvents.length > 0 && !buzzerDismissed.current) {
             setShowBuzzerPopup(true);
+            showBuzzerPopupRef.current = true;
           }
         }
         lastSeenEventId.current = newestId;
@@ -402,13 +408,20 @@ const HouseholdDashboard = () => {
         lastSeenEventId.current = data.events[0].id;
       }
 
-      // Also show popup if server says buzzer is active
-      if (serverBuzzerActive && !showBuzzerPopup) {
+      if (serverBuzzerActive && !showBuzzerPopupRef.current && !buzzerDismissed.current) {
         setShowBuzzerPopup(true);
-        setBuzzerEventDesc('Bzučiak bol aktivovaný systémom');
+        showBuzzerPopupRef.current = true;
       }
 
-      calculateStatistics(data.events);
+      // Skip UI update if user is typing in an input to prevent focus loss
+      const isTyping = document.activeElement &&
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
+
+      if (!isTyping) {
+        setDashboardData(data);
+        setEsp32Online(data.system_status?.online === true);
+        calculateStatistics(data.events, data.event_stats, data.hourly_activity);
+      }
     } catch { }
   };
 
@@ -422,51 +435,44 @@ const HouseholdDashboard = () => {
       if (res.ok) {
         setBuzzerActive(false);
         setShowBuzzerPopup(false);
+        showBuzzerPopupRef.current = false;
         addToast('Bzučiak vypnutý', 'success');
         fetchDashboard();
       } else { addToast('Nepodarilo sa vypnúť bzučiak', 'error'); }
     } catch { addToast('Chyba komunikácie so serverom', 'error'); }
   };
 
-  const calculateStatistics = (events) => {
+  const calculateStatistics = (events, serverStats, serverHourly) => {
     const now = new Date();
-    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
     const weekStart = new Date(now.getTime() - 7 * 86400000);
-    const monthStart = new Date(now.getTime() - 30 * 86400000);
-    let todayStats = { total: 0, alerts: 0, warnings: 0 };
-    let weekStats = { total: 0, alerts: 0, warnings: 0 };
-    let monthStats = { total: 0, alerts: 0, warnings: 0 };
     let sensorCounts = {};
-    let hourlyActivity = Array(24).fill(0);
     let dailyActivity = Array(7).fill(0);
     events.forEach(ev => {
       const eventDate = new Date(ev.timestamp);
-      if (eventDate >= monthStart) {
-        monthStats.total++;
-        if (ev.severity === 'alert') monthStats.alerts++;
-        if (ev.severity === 'warning') monthStats.warnings++;
-      }
       if (eventDate >= weekStart) {
-        weekStats.total++;
-        if (ev.severity === 'alert') weekStats.alerts++;
-        if (ev.severity === 'warning') weekStats.warnings++;
         const evStr = eventDate.toDateString();
         for (let i = 0; i < 7; i++) {
           const d = new Date(now.getTime() - i * 86400000);
           if (evStr === d.toDateString()) dailyActivity[6 - i]++;
         }
       }
-      if (eventDate >= todayStart) {
-        todayStats.total++;
-        if (ev.severity === 'alert') todayStats.alerts++;
-        if (ev.severity === 'warning') todayStats.warnings++;
-        hourlyActivity[eventDate.getHours()]++;
-      }
       if (ev.sensor_name) { sensorCounts[ev.sensor_name] = (sensorCounts[ev.sensor_name] || 0) + 1; }
     });
     let mostActiveSensor = null; let maxCount = 0;
     Object.entries(sensorCounts).forEach(([sensorName, count]) => { if (count > maxCount) { maxCount = count; mostActiveSensor = { name: sensorName, count }; } });
-    setStatistics({ today: todayStats, week: weekStats, month: monthStats, mostActiveSensor, hourlyActivity, dailyActivity });
+    const dayNamesArr = ['Ne', 'Po', 'Ut', 'St', 'Št', 'Pi', 'So'];
+    const dailyLabels = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 86400000);
+      dailyLabels.push(dayNamesArr[d.getDay()]);
+    }
+    // Use server-provided stats (unlimited) if available, otherwise fallback to client-side
+    const todayStats = serverStats?.today || { total: 0, alerts: 0, warnings: 0 };
+    const weekStats = serverStats?.week || { total: 0, alerts: 0, warnings: 0 };
+    const monthStats = serverStats?.month || { total: 0, alerts: 0, warnings: 0 };
+    // Use server-provided hourly activity (correct timezone from MySQL HOUR())
+    const hourlyActivity = serverHourly || Array(24).fill(0);
+    setStatistics({ today: todayStats, week: weekStats, month: monthStats, mostActiveSensor, hourlyActivity, dailyActivity, dailyLabels });
   };
 
   const toggleAlarm = async () => {
@@ -673,9 +679,8 @@ const HouseholdDashboard = () => {
       {/* BUZZER POPUP */}
       {showBuzzerPopup && (
         <BuzzerPopup
-          eventDescription={buzzerEventDesc}
           onDeactivate={deactivateBuzzer}
-          onClose={() => setShowBuzzerPopup(false)}
+          onClose={() => { setShowBuzzerPopup(false); showBuzzerPopupRef.current = false; buzzerDismissed.current = true; }}
         />
       )}
 
@@ -707,10 +712,12 @@ const HouseholdDashboard = () => {
                 Členovia
               </button>
             )}
-            <button onClick={() => setActiveView('mycode')}
-              className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all ${activeView === 'mycode' ? 'bg-[#9357b5] text-white shadow-[0_0_15px_rgba(147,87,181,0.5)]' : 'text-[#A3A3A3] hover:text-white hover:bg-white/5'}`}>
-              Kód
-            </button>
+            {user?.role !== 'admin' && (
+              <button onClick={() => setActiveView('mycode')}
+                className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all ${activeView === 'mycode' ? 'bg-[#9357b5] text-white shadow-[0_0_15px_rgba(147,87,181,0.5)]' : 'text-[#A3A3A3] hover:text-white hover:bg-white/5'}`}>
+                Kód
+              </button>
+            )}
             <div className="w-px h-6 bg-white/10 mx-2" />
             <button onClick={toggleAlarm}
               className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all flex items-center gap-2 border ${alarmActive
@@ -742,15 +749,12 @@ const HouseholdDashboard = () => {
           <div className="space-y-12">
             {/* Stat Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <StatCard icon={Activity} label="Dnešná Aktivita" value={statistics.today.total}
-                trend={statistics.today.total > 0 ? Math.round((statistics.today.total / Math.max(statistics.week.total / 7, 1)) * 10) : 0}
-                sub="Udalostí za 24h" />
+              <StatCard icon={Activity} label="Dnešná Aktivita" value={statistics.today.total > 100 ? '100+' : statistics.today.total} />
               <StatCard icon={ShieldCheck} label="Aktívne senzory" value={sensors.length}
-                sub={`${sensors.filter(s => s.status === 'active').length} online`} />
-              <StatCard icon={AlertTriangle} label="Bezpečnostné výstrahy" value={statistics.today.alerts}
-                trend={statistics.today.alerts > 0 ? -(statistics.today.alerts) : 0}
-                sub={statistics.today.alerts > 0 ? 'Dnešné výstrahy' : 'Žiadne výstrahy'} />
-              <StatCard icon={Users} label="Počet registrovaných používateľov" value={members.length} />
+                iconColor="#f1ec63" />
+              <StatCard icon={AlertTriangle} label="Bezpečnostné výstrahy" value={statistics.today.alerts} />
+              <StatCard icon={Users} label="Počet používateľov" value={members.length}
+                iconColor="#FFFFFF" />
             </div>
 
             {/* Sensors + Activity History */}
@@ -762,7 +766,7 @@ const HouseholdDashboard = () => {
                 </h3>
                 <div className="grid grid-cols-1 gap-3">
                   {sensors.map(sensor => (
-                    <SensorCard key={sensor.id} sensor={sensor} alarmActive={alarmActive} onToggle={() => handleToggleSensor(sensor.id)} />
+                    <SensorCard key={sensor.id} sensor={sensor} alarmActive={alarmActive} onToggle={() => handleToggleSensor(sensor.id)} canToggle={user?.role === 'admin'} />
                   ))}
                 </div>
               </div>
@@ -771,7 +775,7 @@ const HouseholdDashboard = () => {
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
                     <Clock size={20} className="text-[#9357b5]" />
-                    História Aktivity
+                    História aktivity
                   </h3>
                   <button onClick={clearHistory} className="text-xs flex items-center gap-1 text-[#EF4444] hover:bg-[#EF4444]/10 px-3 py-1.5 rounded-lg transition-all">
                     <Trash2 size={14} /> Vymazať
@@ -800,43 +804,59 @@ const HouseholdDashboard = () => {
           <div className="space-y-8 animate-fade-in-up">
             <h2 className="text-2xl font-bold text-white flex items-center gap-3">
               <PieChart className="text-[#9357b5]" />
-              Podrobné Štatistiky
+              Podrobné štatistiky
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="card-neon p-6">
                 <h3 className="text-lg font-bold text-white mb-4">Aktivita za posledných 7 dní</h3>
-                <div className="flex items-end gap-2 h-40">
-                  {statistics.dailyActivity.map((count, idx) => (
-                    <div key={idx} className="flex-1 flex flex-col justify-end group">
-                      <div
-                        className="w-full bg-[#9357b5] rounded-t-lg transition-all group-hover:bg-[#a66cc9]"
-                        style={{ height: `${Math.max(5, (count / Math.max(...statistics.dailyActivity, 1)) * 100)}%` }}
-                      ></div>
-                      <p className="text-[10px] text-center mt-2 text-[#A3A3A3]">
-                        {['1', '2', '3', '4', '5', '6', '7'][idx]}
-                      </p>
-                    </div>
-                  ))}
+                <div className="h-40 flex flex-col">
+                  <div className="flex-1 flex items-end gap-2 overflow-hidden">
+                    {statistics.dailyActivity.map((count, idx) => (
+                      <div key={idx} className="flex-1 h-full flex items-end group relative">
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-[#9357b5] text-white text-[10px] font-bold px-2 py-0.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-lg z-10">
+                          {count}
+                        </div>
+                        <div
+                          className="w-full bg-[#9357b5] rounded-t-lg transition-all group-hover:bg-[#a66cc9] cursor-pointer"
+                          style={{ height: `${Math.max(5, (count / Math.max(...statistics.dailyActivity, 1)) * 100)}%` }}
+                        ></div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    {statistics.dailyLabels.map((label, idx) => (
+                      <p key={idx} className={`flex-1 text-[10px] text-center ${idx === 6 ? 'text-[#9357b5] font-bold' : 'text-[#A3A3A3]'}`}>{label}</p>
+                    ))}
+                  </div>
                 </div>
               </div>
               <div className="card-neon p-6">
                 <h3 className="text-lg font-bold text-white mb-4">Aktivita počas dňa (24h)</h3>
-                <div className="flex items-end gap-1 h-40">
-                  {statistics.hourlyActivity.filter((_, i) => i % 2 === 0).map((count, idx) => (
-                    <div key={idx} className="flex-1 flex flex-col justify-end group">
-                      <div
-                        className="w-full bg-[#3b82f6] rounded-t-lg transition-all group-hover:bg-[#60a5fa]"
-                        style={{ height: `${Math.max(5, (count / Math.max(...statistics.hourlyActivity, 1)) * 100)}%` }}
-                      ></div>
-                      <p className="text-[9px] text-center mt-2 text-[#737373]">{idx * 2}h</p>
-                    </div>
-                  ))}
+                <div className="h-40 flex flex-col">
+                  <div className="flex-1 flex items-end gap-[2px] overflow-hidden">
+                    {statistics.hourlyActivity.map((count, idx) => (
+                      <div key={idx} className="flex-1 h-full flex items-end group relative">
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-[#3b82f6] text-white text-[10px] font-bold px-2 py-0.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-lg z-10">
+                          {count}
+                        </div>
+                        <div
+                          className="w-full bg-[#3b82f6] rounded-t-lg transition-all group-hover:bg-[#60a5fa] cursor-pointer"
+                          style={{ height: `${Math.max(5, (count / Math.max(...statistics.hourlyActivity, 1)) * 100)}%` }}
+                        ></div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-[2px] pt-2">
+                    {statistics.hourlyActivity.map((_, idx) => (
+                      <p key={idx} className={`flex-1 text-[7px] text-center ${idx === new Date().getHours() ? 'text-[#3b82f6] font-bold' : 'text-[#737373]'}`}>{idx}</p>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
 
             <div className="card-neon p-6">
-              <h3 className="text-lg font-bold text-white mb-6">Prehľad Senzorov</h3>
+              <h3 className="text-lg font-bold text-white mb-6">Prehľad aktivity</h3>
               <div className="space-y-4">
                 {statistics.mostActiveSensor ? (
                   <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
@@ -876,7 +896,7 @@ const HouseholdDashboard = () => {
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold text-white flex items-center gap-3">
                 <Users className="text-[#9357b5]" />
-                Správa Členov a Kódov
+                Spravovanie členov
               </h2>
             </div>
 
