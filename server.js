@@ -201,6 +201,18 @@ app.get('/api/household/dashboard', authenticateToken, async (req, res) => {
   try {
     const household_id = req.user.household_id;
 
+    // Cleanup: remove duplicate system_heartbeat rows for this household.
+    // Duplicates cause the JOIN to alternate between rows, flipping online status on every poll.
+    try {
+      await pool.execute(
+        `DELETE FROM system_heartbeat
+         WHERE household_id = ? AND id NOT IN (
+           SELECT id FROM (SELECT id FROM system_heartbeat WHERE household_id = ? ORDER BY last_seen DESC LIMIT 1) t
+         )`,
+        [household_id, household_id]
+      );
+    } catch (_) { /* non-critical, ignore */ }
+
     // Získaj household info so system status
     const [household] = await pool.execute(
       `SELECT 
@@ -212,10 +224,10 @@ app.get('/api/household/dashboard', authenticateToken, async (req, res) => {
   COALESCE(bs.is_active, 0) AS buzzer_active,
   TIMESTAMPDIFF(SECOND, sh.last_seen, NOW()) AS seconds_since_heartbeat
  FROM households h
- LEFT JOIN system_heartbeat sh ON h.id = sh.household_id
+ LEFT JOIN (SELECT * FROM system_heartbeat WHERE household_id = ? ORDER BY last_seen DESC, is_online DESC LIMIT 1) sh ON h.id = sh.household_id
  LEFT JOIN (SELECT * FROM buzzer_status WHERE household_id = ? ORDER BY id DESC LIMIT 1) bs ON h.id = bs.household_id
  WHERE h.id = ?`,
-      [household_id, household_id]
+      [household_id, household_id, household_id]
     );
 
     if (household.length === 0) {
@@ -718,6 +730,17 @@ app.post('/api/household/heartbeat', async (req, res) => {
     if (!household_id) {
       return res.status(400).json({ error: 'household_id is required' });
     }
+
+    // Clean up any duplicate heartbeat rows – keep only the most recent one.
+    // Duplicates cause the JOIN in the dashboard query to alternate between
+    // online/offline rows on every request, producing spurious connection toasts.
+    await pool.execute(
+      `DELETE FROM system_heartbeat
+       WHERE household_id = ? AND id NOT IN (
+         SELECT id FROM (SELECT id FROM system_heartbeat WHERE household_id = ? ORDER BY last_seen DESC LIMIT 1) t
+       )`,
+      [household_id, household_id]
+    );
 
     await pool.execute(
       'CALL sp_update_heartbeat(?, ?, ?, ?)',

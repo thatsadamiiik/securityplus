@@ -283,6 +283,8 @@ const HouseholdDashboard = () => {
   const [keypadCodeInput, setKeypadCodeInput] = useState('');
 
   const prevEsp32Online = useRef(null);
+  const esp32ChangeCount = useRef(0); // debounce: how many consecutive polls with a new value
+  const fetchDashboardRef = useRef(null); // always points to the latest fetchDashboard
 
   const [userPreferences, setUserPreferences] = useState({
     notifications_enabled: true, sound_alerts: true, email_notifications: true,
@@ -308,12 +310,7 @@ const HouseholdDashboard = () => {
 
   const checkInternetConnection = () => { setHasInternet(navigator.onLine); };
 
-  useEffect(() => {
-    if (prevEsp32Online.current !== null && prevEsp32Online.current !== esp32Online) {
-      addToast(esp32Online ? 'Systém pripojený!' : 'Systém odpojený!', esp32Online ? 'success' : 'error');
-    }
-    prevEsp32Online.current = esp32Online;
-  }, [esp32Online]);
+  // Toast logic for esp32 online status is handled with debouncing inside fetchDashboard.
 
   useEffect(() => {
     const handleOnline = () => { setHasInternet(true); addToast('Internet obnovený', 'success'); };
@@ -413,13 +410,36 @@ const HouseholdDashboard = () => {
         showBuzzerPopupRef.current = true;
       }
 
-      // Skip UI update if user is typing in an input to prevent focus loss
+      // Debounced online-status toast.
+      // Requires 30 consecutive polls (~60 s) of a changed value before firing.
+      // This absorbs short oscillations caused by duplicate DB rows or brief blips.
+      const currentOnline = data.system_status?.online === true;
+      setEsp32Online(currentOnline);
+      if (prevEsp32Online.current === null) {
+        prevEsp32Online.current = currentOnline;
+        esp32ChangeCount.current = 0;
+      } else if (prevEsp32Online.current !== currentOnline) {
+        esp32ChangeCount.current += 1;
+        if (esp32ChangeCount.current >= 30) {
+          // Only show "connected" toast if we were previously confirmed offline.
+          if (currentOnline) {
+            addToast('Systém pripojený!', 'success');
+          } else {
+            addToast('Systém odpojený!', 'error');
+          }
+          prevEsp32Online.current = currentOnline;
+          esp32ChangeCount.current = 0;
+        }
+      } else {
+        esp32ChangeCount.current = 0;
+      }
+
+      // Skip heavy UI update if user is typing in an input to prevent focus loss
       const isTyping = document.activeElement &&
         ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName);
 
       if (!isTyping) {
         setDashboardData(data);
-        setEsp32Online(data.system_status?.online === true);
         calculateStatistics(data.events, data.event_stats, data.hourly_activity);
       }
     } catch { }
@@ -485,10 +505,13 @@ const HouseholdDashboard = () => {
     } catch { addToast('Chyba pripojenia', 'error'); }
   };
 
+  // Keep the ref up-to-date on every render so the interval never has a stale closure.
+  fetchDashboardRef.current = fetchDashboard;
+
   useEffect(() => {
     if (isLoggedIn && token) {
-      fetchDashboard();
-      const interval = setInterval(fetchDashboard, 2000);
+      fetchDashboardRef.current();
+      const interval = setInterval(() => fetchDashboardRef.current(), 2000);
       return () => clearInterval(interval);
     }
   }, [isLoggedIn, token]);
